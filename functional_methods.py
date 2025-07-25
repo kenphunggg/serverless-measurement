@@ -15,7 +15,7 @@ from multiprocessing.pool import ThreadPool
 import subprocess
 import os
 import signal
-from power import pw, em
+# from power import pw, em
 from variables import *
 import k8s_API
 from time import sleep
@@ -100,21 +100,24 @@ def get_curl_values_and_update_job(cmd: str, host: str, image: str, target_pods:
 
         time_namelookup = float((output.split(
             b"time_namelookup:  ")[1].split(b" ")[0]).split(b"s")[0])
-        
-        time_connect = float((output.split(b"time_connect:  ")[1].split(b" ")[0]).split(b"s")[0])
+
+        time_connect = float((output.split(b"time_connect:  ")[
+                             1].split(b" ")[0]).split(b"s")[0])
 
         time_appconnect = float((output.split(
             b"time_appconnect:  ")[1].split(b" ")[0]).split(b"s")[0])
-        
+
         time_pretransfer = float((output.split(
             b"time_pretransfer:  ")[1].split(b" ")[0]).split(b"s")[0].split(b"s")[0])
-        
-        time_redirect = float((output.split(b"time_redirect:  ")[1].split(b" ")[0]).split(b"s")[0])
+
+        time_redirect = float((output.split(b"time_redirect:  ")[
+                              1].split(b" ")[0]).split(b"s")[0])
 
         time_starttransfer = float((output.split(
             b"time_starttransfer:  ")[1].split(b" ")[0]).split(b"s")[0])
-        
-        time_total = float((output.split(b"time_total:  ")[1].split(b" ")[0]).split(b"s")[0].split(b"s")[0])
+
+        time_total = float((output.split(b"time_total:  ")[1].split(b" ")[
+                           0]).split(b"s")[0].split(b"s")[0])
 
         # Store the values in a dictionary
         # time_dict = {"time_namelookup": time_namelookup, "time_connect": time_connect, "time_appconnect": time_appconnect, "time_pretransfer": time_pretransfer,
@@ -139,21 +142,23 @@ def get_prometheus_values_and_update_job(host: str, image: str, target_pods: int
         ip = JETSON_IP
         # gpu_query = VALUES_GPU_QUERY_JETSON
         values_power = pw.get_power()/1000.0
-        values_energy = 0 # Jetson power board has now energy value, so pls ignore it
+        values_energy = 0  # Jetson power board has now energy value, so pls ignore it
     else:
         ip = MEC_IP
         gpu_query = VALUES_GPU_QUERY_MEC
         voltage, current, energy, real_power, apparent_power, reactive_power, power_factor, frequency = em.get_energy_data()
         # real_power = 100000
         values_power = real_power/100.0
-        values_energy = energy*36 #Convert from Wh --> J
+        values_energy = energy*36  # Convert from Wh --> J
 
-    values_per_cpu_in_use = get_data_from_api(VALUES_CPU_QUERY.format(ip)) # query CPU
+    values_per_cpu_in_use = get_data_from_api(
+        VALUES_CPU_QUERY.format(ip))  # query CPU
     # values_per_gpu_in_use = get_data_from_api(gpu_query.format(ip)) # query CPU, turn on if GPU exporter exists
-    values_per_gpu_in_use = [0,0] # turn off if GPU exporter exists
+    values_per_gpu_in_use = [0, 0]  # turn off if GPU exporter exists
     # values_network_receive = get_data_from_api(VALUES_NETWORK_RECEIVE_QUERY) # turn on to measure bandwidth
-    values_memory = get_data_from_api(VALUES_MEMORY_QUERY.format(ip, ip, ip)) # query RAM
-    values_running_pods = k8s_API.get_number_pod() # query number of running pods
+    values_memory = get_data_from_api(
+        VALUES_MEMORY_QUERY.format(ip, ip, ip))  # query RAM
+    values_running_pods = k8s_API.get_number_pod()  # query number of running pods
 
     # write values to csv file
     try:
@@ -164,7 +169,6 @@ def get_prometheus_values_and_update_job(host: str, image: str, target_pods: int
     except Exception as ex:
         print(ex)
     # if TEST_MODE: print("Current pods: %s, target: %d" % (curr_pods, (int(target_pods)+POD_EXSISTED)))
-
 
 
 def bash_cmd(cmd: str):
@@ -231,7 +235,7 @@ def auto_delete(target_pod, event):
 #         list_pod = k8s_API.get_list_term_pod(NAMESPACE)
 #     else:
 #         list_pod = k8s_API.list_namespaced_pod_status(NAMESPACE)
-    
+
 #     for i in list_pod:
 #         IP = i.pod_ip
 #         if (IP is None):
@@ -245,7 +249,7 @@ def auto_delete(target_pod, event):
 #         t.start()
 #     for t in threads:
 #         t.join()
-    
+
 #     while not result_queue.empty():
 #         result = result_queue.get()
 #         results.append(result)
@@ -261,19 +265,24 @@ def exec_pod(cmd: str, target_pod: int, type: str = "normal"):
     status = True
     if type == "auto_delete":
         list_pod = []
-        while len(list_pod) < target_pod: # when multiple pods are deployed, sometimes the code can't query the number of term pod correctly
+        # when multiple pods are deployed, sometimes the code can't query the number of term pod correctly
+        while len(list_pod) < target_pod:
             list_pod = k8s_API.get_list_term_pod(NAMESPACE)
-            print("Query of list_term_pod is {}, while target_pod is {}".format(len(list_pod), target_pod))
+            print("Query of list_term_pod is {}, while target_pod is {}".format(
+                len(list_pod), target_pod))
         for i in list_pod:
-            t = threading.Thread(target=connect_pod_exec, args=(cmd.format(i.pod_ip), result_queue, output_lock, ))
+            t = threading.Thread(target=connect_pod_exec, args=(
+                cmd.format(i.pod_ip), result_queue, output_lock, ))
             threads.append(t)
     elif type == "fps":
         for i in range(1, target_pod + 1, 1):
-            t = threading.Thread(target=connect_pod_exec, args=(cmd.format(i, i), result_queue, output_lock, ))
+            t = threading.Thread(target=connect_pod_exec, args=(
+                cmd.format(i, i), result_queue, output_lock, ))
             threads.append(t)
     else:
         for i in range(1, target_pod + 1, 1):
-            t = threading.Thread(target=connect_pod_exec, args=(cmd.format(i), result_queue, output_lock, ))
+            t = threading.Thread(target=connect_pod_exec, args=(
+                cmd.format(i), result_queue, output_lock, ))
             threads.append(t)
     for t in threads:
         t.start()
@@ -285,15 +294,19 @@ def exec_pod(cmd: str, target_pod: int, type: str = "normal"):
     status = True
     return status, results
 
+
 def get_fps_exec(host, target_pod, rep):
     try:
-        for i in range(1,target_pod + 1, 1):
-            cmd = "kubectl cp ubuntu:file{}.log".format(i) + " " + DATA_FPS_FILE_DIRECTORY.format(host, target_pod, rep, i, generate_file_time)
+        for i in range(1, target_pod + 1, 1):
+            cmd = "kubectl cp ubuntu:file{}.log".format(
+                i) + " " + DATA_FPS_FILE_DIRECTORY.format(host, target_pod, rep, i, generate_file_time)
             print(cmd)
-            output = subprocess.check_output(['/bin/bash', '-c', cmd]) # or check_output
+            output = subprocess.check_output(
+                ['/bin/bash', '-c', cmd])  # or check_output
     except subprocess.CalledProcessError as e:
         output = str(e.output)
     return output
+
 
 def connect_pod_exec(target_command: str, result_queue, lock, target_name: str = "ubuntu"):
     print(target_command)
@@ -301,7 +314,8 @@ def connect_pod_exec(target_command: str, result_queue, lock, target_name: str =
     trial = 0
     while trial < 20:
         try:
-            output = subprocess.check_output(['/bin/bash', '-c', command]) # or check_output
+            output = subprocess.check_output(
+                ['/bin/bash', '-c', command])  # or check_output
             with lock:
                 result_queue.put(output)
         except subprocess.CalledProcessError as e:
@@ -311,7 +325,7 @@ def connect_pod_exec(target_command: str, result_queue, lock, target_name: str =
             if "52" in output or "200" in output:
                 # with output_lock:
                 #     print("Terminated successfully")
-                return 
+                return
             else:
                 # with output_lock:
                 #     print("Terminated unsuccessfully, trial: {}".format(trial))
@@ -324,6 +338,7 @@ def connect_pod_exec(target_command: str, result_queue, lock, target_name: str =
     # with output_lock:
     #     print("The system has sent {} times curl cmd, but none returns successfully.".format(trial))
 
+
 def config_deploy(cmd: str):
     Process(target=k8s_API.config_deploy, args=(cmd, )).start()
     # threading.Thread(target= k8s_API.config_deploy, args=(cmd, )).start()
@@ -331,11 +346,12 @@ def config_deploy(cmd: str):
 
 if __name__ == "__main__":
 
-    output = subprocess.check_output(['/bin/bash', '-c', 'curl -w \"@curl-time.txt\" google.com'])
-        # print(output)
+    output = subprocess.check_output(
+        ['/bin/bash', '-c', 'curl -w \"@curl-time.txt\" google.com'])
+    # print(output)
 
-        # Extract the values you're interested in from the output
-        # print(output.split(b"time_pretransfer:  ")[1].split(b" ")[0])
+    # Extract the values you're interested in from the output
+    # print(output.split(b"time_pretransfer:  ")[1].split(b" ")[0])
 
     time_namelookup = float(output.split(
         b"time_namelookup:  ")[1].split(b" ")[0])
@@ -350,7 +366,7 @@ if __name__ == "__main__":
     time_total = float(output.split(b"time_total:  ")[1].split(b" ")[0])
     # Store the values in a dictionary
     time_dict = {"time_namelookup": time_namelookup, "time_connect": time_connect, "time_appconnect": time_appconnect, "time_pretransfer": time_pretransfer,
-                "time_redirect": time_redirect, "time_starttransfer": time_starttransfer, "time_total": time_total}
+                 "time_redirect": time_redirect, "time_starttransfer": time_starttransfer, "time_total": time_total}
     print(time_dict)
     # Write value to data file
     # try:

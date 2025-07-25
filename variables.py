@@ -1,4 +1,4 @@
-from lib2to3.pgen2.token import COLON, SLASH
+# from lib2to3.pgen2.token import COLON, SLASH
 from kubernetes import client, config
 from datetime import datetime
 import os
@@ -86,7 +86,6 @@ DATA_FPS_FILE_DIRECTORY = DEFAULT_DIRECTORY + \
     "/data/fps/{}/pod_{}_rep_{}_#pod_{}_{}.log"
 
 
-
 # CMD
 
 # IMAGE_NAME = "hctung57/object-detection-arm:4.6.1.10@sha256:7361b88965a4bb39a693450902ad660e1722f4a9da677b36374318cc0023d771" #SHA code is required
@@ -107,13 +106,17 @@ DELETE_IMAGE_CMD = "sudo crictl rmi " + IMAGE_NAME
 DELETE_PROXY_IMAGE_CMD = "sudo crictl rmi " + PROXY_IMAGE_NAME
 DELETE_GW = "sudo route del default"
 ADD_GW = "sudo ip route add default via 172.16.42.1"
-CURL_TERM = "curl http://{}:8080/api/terminate" # When pod is terminated, DNS may be gone, thus IP is preferred
-CURL_ACTIVE = "curl " + HEAVY_DNS + "/api/stream/" + STREAMING_IP + ":" + STREAMING_PORT + "/" + str(DETECTION_TIME)
+# When pod is terminated, DNS may be gone, thus IP is preferred
+CURL_TERM = "curl http://{}:8080/api/terminate"
+CURL_ACTIVE = "curl " + HEAVY_DNS + "/api/stream/" + \
+    STREAMING_IP + ":" + STREAMING_PORT + "/" + str(DETECTION_TIME)
 # CURL_ACTIVE_INST = "curl " + HEAVY_DNS + "/api/stream/" + STREAMING_IP + ":" + STREAMING_PORT + "/" + str(DETECTION_TIME)+"/0"
-CURL_ACTIVE_INST = "curl " + HEAVY_DNS + "/api/stream/active/" + STREAMING_IP + ":" + STREAMING_PORT + "/" + str(DETECTION_TIME)
+CURL_ACTIVE_INST = "curl " + HEAVY_DNS + "/api/stream/active/" + \
+    STREAMING_IP + ":" + STREAMING_PORT + "/" + str(DETECTION_TIME)
 CURL_TRIGGER = "curl " + HEAVY_DNS + "/api/active"
 CURL_TRIGGER_TIME = "curl -w \"@curl-time.txt\"  " + HEAVY_DNS + "/api/active"
-CURL_RESPONSE_TIME = "curl -F upload=@{}.jpg -w \"@curl-time.txt\"  " + HEAVY_DNS + "/api/picture"
+CURL_RESPONSE_TIME = "curl -F upload=@{}.jpg -w \"@curl-time.txt\"  " + \
+    HEAVY_DNS + "/api/picture"
 CURL_FPS = "curl http://detection{}.serverless.svc.cluster.local/download -o file{}.log"
 
 

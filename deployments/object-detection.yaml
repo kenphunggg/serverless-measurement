@@ -1,0 +1,19 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: detection
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/initial-scale: '4'
+        autoscaling.knative.dev/max-scale: '4'
+        autoscaling.knative.dev/target: '1'
+        autoscaling.knative.dev/window: 104s
+    spec:
+      containers:
+      - image: 29061999/knative-video-detection-arm@sha256:47705b6d9561b0fe45fadf559802a8d500c32b069fd50ef0fc69e6859c34a9e3
+        ports:
+        - containerPort: 8080
+      nodeSelector:
+        kubernetes.io/hostname: pi4

@@ -1,7 +1,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: detection1
+  name: hello1
   namespace: serverless
 spec:
   template:
@@ -10,8 +10,11 @@ spec:
         autoscaling.knative.dev/window: 60s
     spec:
       containers:
-      - image: docker.io/kiemtcb/detection-object:4.7arm@sha256:6b8bd5ddc833054c49f48ce3ae8981bfedb207567fc26033ba4e8ceba796a11c
+      - env:
+        - name: USER_NAME
+          value: LAZYken
+        image: docker.io/lazyken/sampleapp:v1@sha256:6019b3e85615fdb77256660f0de71f42a7b2c83ba5219612eddb8a3db9199cba
         ports:
-        - containerPort: 8080
+        - containerPort: 5000
       nodeSelector:
-        kubernetes.io/hostname: jetson
+        kubernetes.io/hostname: edge-node

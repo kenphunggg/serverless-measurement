@@ -9,8 +9,8 @@ import os
 # HOST IP
 MASTER_HOST = "localhost"
 MASTER_USERNAME = "master"  # Khong dung
-MASTER_PASSWORD = "kienlu123"
-PROM_IP = "172.16.42.11"
+MASTER_PASSWORD = "PQThai29112003"
+PROM_IP = "192.168.17.163"
 MEC_IP = "172.16.42.12"
 JETSON_IP = '192.168.1.2'
 MEC_USERNAME = "mec"
@@ -75,7 +75,7 @@ VALUES_GPU_QUERY_JETSON = "gpu_utilization_percentage_Hz{{instance='{}:9200',nvi
 DEFAULT_DIRECTORY = os.getcwd()
 DATA_DIRECTORY = DEFAULT_DIRECTORY + "/data/"
 DEPLOYMENT_PATH = DEFAULT_DIRECTORY + "/deploy.yaml"
-TEMPLATE_PATH = DEFAULT_DIRECTORY + "/template.yaml"
+TEMPLATE_PATH = DEFAULT_DIRECTORY + "/template_ken.yaml"
 DATA_PROMETHEUS_FILE_DIRECTORY = DEFAULT_DIRECTORY + \
     "/data/resource/{}/{}_pod_{}_rep_{}_{}.csv"
 DATA_TIMESTAMP_FILE_DIRECTORY = DEFAULT_DIRECTORY + \
@@ -84,12 +84,14 @@ DATA_CURL_FILE_DIRECTORY = DEFAULT_DIRECTORY + \
     "/data/curl/{}/{}_pod_{}_rep_{}_{}.csv"
 DATA_FPS_FILE_DIRECTORY = DEFAULT_DIRECTORY + \
     "/data/fps/{}/pod_{}_rep_{}_#pod_{}_{}.log"
+BASH_PATH = DEFAULT_DIRECTORY + "/deployments"
 
 
 # CMD
 
 # IMAGE_NAME = "hctung57/object-detection-arm:4.6.1.10@sha256:7361b88965a4bb39a693450902ad660e1722f4a9da677b36374318cc0023d771" #SHA code is required
-HEAVY_IMAGE_NAME_ARM = "docker.io/kiemtcb/detection-object:4.7arm@sha256:6b8bd5ddc833054c49f48ce3ae8981bfedb207567fc26033ba4e8ceba796a11c"  # SHA code is required
+# HEAVY_IMAGE_NAME_ARM = "docker.io/kiemtcb/detection-object:4.7arm@sha256:6b8bd5ddc833054c49f48ce3ae8981bfedb207567fc26033ba4e8ceba796a11c"  # SHA code is required
+HEAVY_IMAGE_NAME_ARM = "docker.io/lazyken/sampleapp:v1@sha256:6019b3e85615fdb77256660f0de71f42a7b2c83ba5219612eddb8a3db9199cba"  # SHA code is required
 HEAVY_WRONG_IMAGE_NAME_ARM = "docker.io/kiemtcb/detection-ob:4.5arm@sha256:71dca3f048f124cb395f5a165aef43c058cff94adffe44437af5d933d3d39c10"  # SHA code is required
 HEAVY_IMAGE_NAME_X86 = "docker.io/kiemtcb/detection-object:4.7x86@sha256:84605786a7c1e7726ba5d689355318d70da9dd2d7aaeb72a8dd9a2690290a2a2"  # SHA code is required
 HEAVY_IMAGE_NAME_X86_WARM_ONLY = "docker.io/kiemtcb/detection-object:nogpu@sha256:abf70349587365b4ae4f47279d1b0952f75d577d1df52fc45a87448b9adb91e6"

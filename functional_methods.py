@@ -22,6 +22,8 @@ from time import sleep
 import re
 import psutil
 
+import logging
+
 
 def get_bytes():
     return psutil.net_io_counters().bytes_sent + psutil.net_io_counters().bytes_recv
@@ -340,6 +342,7 @@ def connect_pod_exec(target_command: str, result_queue, lock, target_name: str =
 
 
 def config_deploy(cmd: str):
+    logging.info("Start config_deploy process!")
     Process(target=k8s_API.config_deploy, args=(cmd, )).start()
     # threading.Thread(target= k8s_API.config_deploy, args=(cmd, )).start()
 

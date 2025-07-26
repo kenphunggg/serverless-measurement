@@ -7,6 +7,9 @@ import yaml
 import re
 from variables import *
 
+import logging
+
+
 class KubernetesPod:
     def __init__(self, pod_name, pod_status, pod_ip, node_name, sum_pod_container, number_container_ready):
         self.pod_name = pod_name
@@ -16,15 +19,18 @@ class KubernetesPod:
         self.sum_pod_container = sum_pod_container
         self.number_container_ready = number_container_ready
 
+
 class PodEvents:
     def __init__(self, pod_name, event_time, event, event_message) -> None:
         self.pod_name = pod_name
         self.event_time = event_time
         self.event = event
         self.event_message = event_message
-        
+
+
 def list_namespaced_pod(target_namespace: str = NAMESPACE):
     api_get_pods_response = ApiV1.list_namespaced_pod(target_namespace)
+
 
 def list_namespaced_pod_status(target_namespace: str = NAMESPACE):
     list_pod_status = []
@@ -65,6 +71,8 @@ def get_number_namespaced_pod_through_status(target_status: str, target_namespac
 
 # NOTE: get event of pod over  pod's name
 #      return array of PodEvents class
+
+
 def list_namespaced_event(target_pod_name: str, target_namespace: str = NAMESPACE):
     list_pod_event = []
     events_response = ApiV1.list_namespaced_event(
@@ -82,6 +90,8 @@ def list_namespaced_event(target_pod_name: str, target_namespace: str = NAMESPAC
 # NOTE:- check if the image image in the pod pulled since pod started
 #      - check if the image image in the pod pulled since a timestamp (optional)
 #      - return True or False
+
+
 def is_image_available(target_pod: str, start_timeline: datetime = None):
     name = ""
     is_pulled = False
@@ -105,6 +115,7 @@ def is_image_available(target_pod: str, start_timeline: datetime = None):
             is_pulled = True
             break
     return is_pulled
+
 
 def create_namespaced_service(target_service: str, target_ID: str,
                               target_service_port: int, target_namespace: str = "serverless"):
@@ -187,12 +198,20 @@ def delete_namespaced_service(target_service: str, target_ID: str, target_namesp
         return ("There is unknown error when delete {}.".format(service_name))
     return ("Delete {} succesfully.".format(service_name))
 
-#NOTE: Consider rewriting the following functions by Python-k8s
-def config_deploy(cmd : str, path_file_output : str = DEPLOYMENT_PATH):
+# NOTE: Consider rewriting the following functions by Python-k8s
+
+
+def config_deploy(cmd: str, path_file_output: str = DEPLOYMENT_PATH):
     try:
-        subprocess.call('echo {} | sudo {}/./kubectl.sh {} {}'.format(MASTER_PASSWORD, BASH_PATH, cmd, path_file_output), shell=True)
+        command = f"echo {MASTER_PASSWORD} | sudo {BASH_PATH}/./kubectl.sh {cmd} {path_file_output}"
+        logging.debug(f'Executing command {command}')
+        subprocess.call(command, shell=True)
+        logging.debug(f'Executing command {command} successfully')
+
     except Exception as e:
         print(f"An error occurred: {e}")
+        logging.error(f"An error occurred: {e}")
+    # print("Service deployed")
     # print("Service deployed")
 
 
@@ -207,24 +226,24 @@ def connect_pod_exec(target_command: str, target_name: str = "ubuntu"):
             print("Subprocess output is: {}".format(output))
             if "52" in output:
                 print("Terminated successfully")
-                return 
+                return
             else:
                 print("Terminated unsuccessfully, trial: {}".format(trial))
                 sleep(1)
                 trial = trial + 1
                 continue
         print("Seem like a good request, but we never know :)")
-        return 
+        return
     print("The system has sent {} times curl cmd, but none returns successfully.".format(trial))
 
 
-def is_pod_terminated(namespace:str = NAMESPACE):
+def is_pod_terminated(namespace: str = NAMESPACE):
     # print("abcdef")
     list_pod = list_namespaced_pod_status(namespace)
     # print("size: {}".format(len(list_pod)))
     if len(list_pod) == 0:
         return False
-    i:KubernetesPod
+    i: KubernetesPod
     for i in list_pod:
         # print("Pod status is: {}".format(i.pod_status))
         if i.pod_status == "Terminating":
@@ -233,97 +252,144 @@ def is_pod_terminated(namespace:str = NAMESPACE):
             return False
     return False
 
-def get_number_pod(namespace:str = NAMESPACE):
+
+def get_number_pod(namespace: str = NAMESPACE):
     return len(list_namespaced_pod_status(namespace))
 
-def get_number_running_pod(namespace:str = NAMESPACE):
+
+def get_number_running_pod(namespace: str = NAMESPACE):
     count = 0
     list_pod = list_namespaced_pod_status(namespace)
-    i:KubernetesPod
+    i: KubernetesPod
     for i in list_pod:
         if i.pod_status == "Running":
             count = count + 1
     return count
 
-def get_list_term_pod(namespace:str = NAMESPACE):
+
+def get_list_term_pod(namespace: str = NAMESPACE):
     count = 0
     list_pod = list_namespaced_pod_status(namespace)
     list_term_pod = []
-    i:KubernetesPod
+    i: KubernetesPod
     for i in list_pod:
         if i.pod_status == "Terminating":
             list_term_pod.append(i)
     return list_term_pod
 
+
 def update_deployment(target_pods_scale: int, image: str,  host: str, path_file_deploy: str = TEMPLATE_PATH):
-#opens the capture file and updates the replica values
-    try:  
+    """
+    Config total pod scale by clone [path_file_deploy] into [target_pods_scale]reps
+    Each reps have the same image but different metadata.name 
+    EX: hello1, hello2, ...
+    Main purpose: Config replica in a 'tricky way'
+    """
+
+    # opens the capture file and updates the replica values
+    logging.debug("Start updating replicas value ...")
+    try:
         new_deployment = []
         for target_pod in range(0, target_pods_scale, 1):
-            docs = list(yaml.load_all(open(path_file_deploy, "r"), Loader=yaml.SafeLoader))
+            docs = list(yaml.load_all(
+                open(path_file_deploy, "r"), Loader=yaml.SafeLoader))
             for doc in docs:
                 for key, value in doc.items():
                     if value == "serving.knative.dev/v1":
-                        doc["metadata"]["name"] = "detection"+str(target_pod+1)
-                        doc["spec"]["template"]["spec"]["nodeSelector"]["kubernetes.io/hostname"] = str(host)
-                        doc["spec"]["template"]["spec"]["containers"][0]["image"] = str(image)
+                        doc["metadata"]["name"] = "hello"+str(target_pod+1)
+                        doc["spec"]["template"]["spec"]["nodeSelector"]["kubernetes.io/hostname"] = str(
+                            host)
+                        doc["spec"]["template"]["spec"]["containers"][0]["image"] = str(
+                            image)
                         break
-                new_deployment.insert(target_pod,doc)
+                new_deployment.insert(target_pod, doc)
+
+            # logging.debug(new_deployment)
 
         with open(DEPLOYMENT_PATH, 'w') as yaml_file:
+            logging.debug(new_deployment)
             yaml.dump_all(new_deployment, yaml_file, default_flow_style=False)
+
+        logging.info(
+            f"Deployment has been updated to {target_pods_scale} pods")
+
     except yaml.YAMLError as exc:
+        logging.error(exc)
         print(exc)
 
-def config_live_time(time: int, path_file_deploy: str = DEPLOYMENT_PATH): #, detection_image: str
-    #opens the capture file and updates the replica values
-    try:  
-        docs = list(yaml.load_all(open(path_file_deploy, "r"), Loader=yaml.SafeLoader))
+
+# , detection_image: str
+def config_live_time(time: int, path_file_deploy: str = DEPLOYMENT_PATH):
+    logging.info("Updating livetime ...")
+    # opens the capture file and updates the replica values
+    try:
+        docs = list(yaml.load_all(
+            open(path_file_deploy, "r"), Loader=yaml.SafeLoader))
         # print("Size of docs: {}".format(len(docs)))
         for doc in docs:
             # print(doc)
             for key, value in doc.items():
                 if value == "serving.knative.dev/v1":
-                    doc["spec"]["template"]["metadata"]["annotations"]["autoscaling.knative.dev/window"] = str(time)+"s"
+                    doc["spec"]["template"]["metadata"]["annotations"]["autoscaling.knative.dev/window"] = str(
+                        time)+"s"
                     break
         with open(DEPLOYMENT_PATH, 'w') as yaml_file:
             yaml.dump_all(docs, yaml_file, default_flow_style=False)
     except yaml.YAMLError as exc:
+        logging.error(exc)
         print(exc)
+
+    logging.info(f"Live time has been changed to {time} seconds")
     print("Live time has been changed to {} seconds".format(time))
- 
-def config_image(image: str, path_file_deploy: str = DEPLOYMENT_PATH): #, detection_image: str
-    #opens the capture file and updates the replica values
-    try:  
-        docs = list(yaml.load_all(open(path_file_deploy, "r"), Loader=yaml.SafeLoader))
+
+
+def config_image(image: str, path_file_deploy: str = DEPLOYMENT_PATH):  # , detection_image: str
+    logging.info("Updating image ...")
+    # opens the capture file and updates the replica values
+    try:
+        docs = list(yaml.load_all(
+            open(path_file_deploy, "r"), Loader=yaml.SafeLoader))
         for doc in docs:
             for key, value in doc.items():
                 if value == "serving.knative.dev/v1":
-                    doc["spec"]["template"]["spec"]["containers"][0]["image"] = str(image)
+                    doc["spec"]["template"]["spec"]["containers"][0]["image"] = str(
+                        image)
                     break
         with open(DEPLOYMENT_PATH, 'w') as yaml_file:
             yaml.dump_all(docs, yaml_file, default_flow_style=False)
     except yaml.YAMLError as exc:
+        logging.error(exc)
         print(exc)
+
+    logging.info(f"Image has been changed to {image}")
     print("Image name has been changed")
 
+
 def is_all_con_ready(namespace: str = NAMESPACE):
-    a = list_namespaced_pod_status(namespace)
+    found_pods = list_namespaced_pod_status(namespace)
+    if len(found_pods) == 0:
+        logging.debug(f"Current no pod in namespace {namespace}, waiting ...")
+    else:
+        logging.debug(
+            f"Found {len(found_pods)} pods in namespace {namespace}: {found_pods}")
+
     count = 0
-    i:KubernetesPod
-    for i in a:
-        if i.number_container_ready/i.sum_pod_container != 1.0:
+    pod: KubernetesPod
+    for pod in found_pods:
+        if pod.number_container_ready/pod.sum_pod_container != 1.0:
             return False
         else:
-            print("Pod {} is ready.".format(i.pod_name))
+            logging.info(f"Pod {pod.pod_name} is ready.")
+            print("Pod {} is ready.".format(pod.pod_name))
             count = count + 1
-            if count == len(a):
+            if count == len(found_pods):
                 return True
     return False
 
+
 def is_all_con_not_ready(namespace: str = NAMESPACE):
     a = list_namespaced_pod_status(namespace)
-    i:KubernetesPod
+    i: KubernetesPod
     for i in a:
         if i.number_container_ready/i.sum_pod_container == 0:
             # print("No containers are ready.")
@@ -331,9 +397,11 @@ def is_all_con_not_ready(namespace: str = NAMESPACE):
         else:
             return False
     return True
-#NOTE: return an array of object endpoint
+# NOTE: return an array of object endpoint
 #      only working with serverless testcase
-#      not true with other testcase 
+#      not true with other testcase
+
+
 def list_namespaced_endpoints(target_namespce: str = "serverless"):
     list_endpoints = []
     get_endpoint_response = ApiV1.list_namespaced_endpoints(target_namespce)
@@ -362,12 +430,14 @@ def list_namespaced_endpoints(target_namespce: str = "serverless"):
         list_endpoints.append(entry)
     return list_endpoints
 
+
 def is_endpoint_available(target_namespce: str = "serverless"):
     get_endpoint_response = ApiV1.list_namespaced_endpoints(target_namespce)
     if len(get_endpoint_response.items) != 0:
         return True
     else:
         return False
+
 
 if __name__ == "__main__":
     # a = is_endpoint_available()
@@ -376,12 +446,12 @@ if __name__ == "__main__":
     # else:
     #     print("Nothing")
     # a = list_namespaced_endpoints("serverless")
-    #i:KubernetesPod
+    # i:KubernetesPod
     # for i in a:
     #     print(i)
-        # print(i.pod_status)
-        # print(i.pod_ip)
-        # print("{}/{}".format(i.number_container_ready,i.sum_pod_container))
+    # print(i.pod_status)
+    # print(i.pod_ip)
+    # print("{}/{}".format(i.number_container_ready,i.sum_pod_container))
     print("Test ....")
     update_deployment(3, "Kienkauko", "jetson")
     config_live_time(20000, "./deploy.yaml")

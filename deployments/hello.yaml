@@ -1,0 +1,48 @@
+# apiVersion: serving.knative.dev/v1
+# kind: Service
+# metadata:
+#   name: nginx
+# spec:
+#   template:
+#     metadata:
+#       # This is the name of our new "Revision," it must follow the convention {service-name}-{revision-name}
+#       # name: nginx-test
+#       annotations:
+#         autoscaling.knative.dev/initial-scale: "3"
+#         # autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10s"
+#     spec:
+#       nodeSelector:
+#         kubernetes.io/hostname: server
+#       containers:
+#         - image: nginx@sha256:b495f952df67472c3598b260f4b2e2ba9b5a8b0af837575cf4369c95c8d8a215
+#           ports:
+#             - containerPort: 8080
+#           resources:
+#             limits:
+#               cpu: 1
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: hello
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/max-scale: "3"
+        autoscaling.knative.dev/initial-scale: "3"
+        autoscaling.knative.dev/target: "1"                     
+        autoscaling.knative.dev/window: "30s" # stable-window 6s -> 1h, default 60s                                                                                        
+        # autoscaling.knative.dev/scale-to-zero-grace-period: "1s" # default 30s 
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: server
+      containers:                                                                                                                                                                                                   
+        - image: gcr.io/knative-samples/helloworld-go
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TARGET
+              value: "World"
+          resources:
+            limits:
+              cpu: 1

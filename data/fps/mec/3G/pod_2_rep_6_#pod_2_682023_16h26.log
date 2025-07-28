@@ -1,0 +1,53 @@
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://10.244.1.254:8080
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
+INFO:werkzeug:127.0.0.1 - - [06/Aug/2023 18:47:24] "GET /api/stream/active/192.168.2.2:1935/200 HTTP/1.1" 200 -
+INFO:main:8.58
+INFO:main:14.71
+INFO:main:14.61
+INFO:main:13.99
+INFO:main:14.25
+INFO:main:11.58
+INFO:main:14.49
+INFO:main:14.85
+INFO:main:14.25
+INFO:main:14.19
+INFO:main:11.79
+INFO:main:11.49
+INFO:main:11.27
+INFO:main:12.65
+INFO:main:14.66
+INFO:main:13.88
+INFO:main:10.50
+INFO:main:1.18
+INFO:main:0.85
+INFO:main:1.32
+INFO:main:0.96
+INFO:main:0.50
+INFO:main:0.51
+INFO:main:1.16
+INFO:main:2.01
+INFO:main:2.15
+INFO:main:0.69
+INFO:main:1.13
+INFO:main:0.64
+INFO:main:2.44
+INFO:main:0.42
+INFO:main:0.88
+INFO:main:0.86
+INFO:main:5.50
+INFO:main:1.32
+INFO:main:2.98
+INFO:main:2.77
+INFO:main:2.67
+INFO:main:1.72
+INFO:main:1.05
+INFO:main:0.47
+INFO:main:1.72
+INFO:main:0.85
+INFO:main:0.31
+INFO:main:0.38
+INFO:main:1.69
+INFO:main:1.92

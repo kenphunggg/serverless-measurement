@@ -1,0 +1,42 @@
+WARNING:werkzeug: * Running on all addresses.
+   WARNING: This is a development server. Do not use it in a production deployment.
+INFO:werkzeug: * Running on http://10.244.3.238:8080/ (Press CTRL+C to quit)
+INFO:werkzeug:127.0.0.1 - - [06/Aug/2023 11:02:35] "GET /api/stream/active/192.168.2.2:1935/200 HTTP/1.1" 200 -
+INFO:main:0.33
+INFO:main:0.63
+INFO:main:0.45
+INFO:main:0.41
+INFO:main:0.77
+INFO:main:0.31
+INFO:main:1.13
+INFO:main:1.02
+INFO:main:1.11
+INFO:main:0.74
+INFO:main:1.15
+INFO:main:0.39
+INFO:main:1.07
+INFO:main:0.64
+INFO:main:1.12
+INFO:main:0.38
+INFO:main:1.10
+INFO:main:1.15
+INFO:main:1.14
+INFO:main:1.14
+INFO:main:0.58
+INFO:main:1.14
+INFO:main:1.14
+INFO:main:1.12
+INFO:main:1.14
+INFO:main:1.11
+INFO:main:1.12
+INFO:main:1.12
+INFO:main:1.14
+INFO:main:1.11
+INFO:main:1.12
+INFO:main:1.11
+INFO:main:1.12
+INFO:main:0.56
+INFO:main:1.11
+INFO:main:1.12
+INFO:main:1.11
+INFO:main:1.12

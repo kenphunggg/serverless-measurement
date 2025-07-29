@@ -1,2 +1,7 @@
 .venv/
+
+result/curl/*
+
+!result/curl/.gitkeep
+
 __pycache__/

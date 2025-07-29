@@ -1,0 +1,16 @@
+{
+    "test_cases": [
+        {
+            "test_case": "web",
+            "repetition": 1,
+            "replicas": [1],
+            "node": "cloud-node"
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 1,
+            "replicas": [1],
+            "node": "cloud-node"
+        }
+    ]
+}

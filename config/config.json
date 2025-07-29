@@ -1,0 +1,17 @@
+{
+    "test_cases": [
+        {
+            "test_case": "web",
+            "repetition": 1,
+            "replicas": [1],
+            "ksvc_name": "measure-web",
+            "arch": "x86",
+            "image": "docker.io/tienshawn/measure-web:fix-sigterm-1.0@sha256:f66498589b9dbcba892405a997094997864561f52003d0999d8ad5dc572ec0d4",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "cool_down_time": 1,
+            "curl_time": 5
+        }
+    ]
+}

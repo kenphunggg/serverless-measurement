@@ -1,8 +1,8 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: measure-web
-  namespace: serverless
+  name: hello
+  namespace: default
 spec:
   template:
     metadata:
@@ -12,8 +12,15 @@ spec:
         autoscaling.knative.dev/max-scale: '1'
     spec:
       containers:
-      - image: docker.io/tienshawn/measure-web:fix-sigterm-1.0@sha256:f66498589b9dbcba892405a997094997864561f52003d0999d8ad5dc572ec0d4
+      - image: docker.io/lazyken/sampleapp:v1
         ports:
         - containerPort: 5000
+        env:
+          - name: USER_NAME
+            value: 'LAZYken'
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
       nodeSelector:
-        kubernetes.io/hostname: cloud-node
+        kubernetes.io/hostname: edge-node

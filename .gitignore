@@ -1,7 +1,29 @@
 .venv/
 
-result/curl/*
+# Ignore Prometheus/TSDB data files
+config/yaml/data/
 
-!result/curl/.gitkeep
+# Ignore result file
+result/1_0_baseline/*
+!result/1_0_baseline/.gitkeep
 
+result/1_1_curl/*
+!result/1_1_curl/.gitkeep
+
+result/1_2_resource_web/*
+!result/1_2_resource_web/.gitkeep
+
+result/2_0_baseline/*
+!result/2_0_baseline/.gitkeep
+
+result/2_1_timeToFirstFrame/*
+!result/2_1_timeToFirstFrame/.gitkeep
+
+result/2_2_bitrate_fps/*
+!result/2_2_bitrate_fps/.gitkeep
+
+result/2_3_streaming_prom/*
+!result/2_3_streaming_prom/.gitkeep
+
+# Ignore python repos
 __pycache__/

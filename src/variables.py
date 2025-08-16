@@ -9,5 +9,3 @@ def reload_var():
 
     localdate = datetime.now()
     generate_file_time = f"d{localdate.day}m{localdate.month}y{localdate.year}_{localdate.hour}h{localdate.minute}"
-
-    logging.info(f"hihi {generate_file_time}")

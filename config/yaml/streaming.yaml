@@ -1,8 +1,8 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: measure-web
-  namespace: serverless
+  name: measure-streaming
+  namespace: default
 spec:
   template:
     metadata:
@@ -12,7 +12,7 @@ spec:
         autoscaling.knative.dev/max-scale: '1'
     spec:
       containers:
-      - image: docker.io/tienshawn/measure-web:fix-sigterm-1.0@sha256:f66498589b9dbcba892405a997094997864561f52003d0999d8ad5dc572ec0d4
+      - image: docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff
         ports:
         - containerPort: 5000
       nodeSelector:

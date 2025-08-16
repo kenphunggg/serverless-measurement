@@ -2,7 +2,7 @@
     "test_cases": [
         {
             "test_case": "web",
-            "repetition": 1,
+            "repetition": 5,
             "replicas": [1],
             "ksvc_name": "measure-web",
             "arch": "x86",
@@ -10,8 +10,283 @@
             "port": 5000,
             "namespace": "serverless",
             "hostname": "cloud-node",
-            "cool_down_time": 1,
-            "curl_time": 5
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 240
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 360
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 480
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 720
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 1080
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 1440
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.162",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 2160
+        },
+        {
+            "test_case": "web",
+            "repetition": 5,
+            "replicas": [1],
+            "ksvc_name": "measure-web",
+            "arch": "x86",
+            "image": "docker.io/tienshawn/measure-web:fix-sigterm-1.0@sha256:f66498589b9dbcba892405a997094997864561f52003d0999d8ad5dc572ec0d4",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 360
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 240
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 480
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 720
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 1080
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 1440
+        },
+        {
+            "test_case": "streaming",
+            "repetition": 5,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
+            "port": 5000,
+            "namespace": "serverless",
+            "hostname": "edge-node",
+            "host_ip": "192.168.17.163",
+            "cool_down_time": 60,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resolution": 2160
         }
-    ]
+
+    ],
+    "prometheus":{
+        "server_ip": "192.168.17.161",
+        "port": 9090,
+        "interface": "ens33"
+    }
 }

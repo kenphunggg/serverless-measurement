@@ -271,78 +271,42 @@ class WebMeasuring:
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
-                logging.info(
-                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
-                )
-
-                # 1. Create result file
-                result_file = CreateResultFile.web_curl(
-                    nodename=self.hostname,
-                    filename=f"{self.arch}_{var.generate_file_time}_rep{rep}.csv",
-                )
-
-                # 2. Deploy ksvc for measuring
-                K8sAPI.deploy_ksvc_web(
-                    ksvc_name=self.ksvc_name,
-                    namespace=self.namespace,
-                    image=self.image,
-                    port=self.port,
-                    hostname=self.hostname,
-                    window_time=20,
-                    min_scale=0,
-                    max_scale=replica,
-                    database_info=self.cluster_info.database_info,
-                )
-
-                # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                while True:
-                    if K8sAPI.all_pods_ready(
-                        pods=K8sAPI.get_pod_status_by_ksvc(
-                            namespace=self.namespace, ksvc_name=self.ksvc_name
-                        )
-                    ):
-                        logging.info("All pods ready!")
-                        break
-                    logging.info("Waiting for pods to be ready ...")
-                    time.sleep(2)
-                time.sleep(self.cool_down_time)
-
-                # Wait for all pods scale to zero
-                while True:
-                    if (
-                        K8sAPI.get_pod_status_by_ksvc(
-                            namespace=self.namespace, ksvc_name=self.ksvc_name
-                        )
-                        == []
-                    ):
-                        logging.info("Scaled to zero!")
-                        break
-                    logging.info("Waiting for pods to scale to zero ...")
-
-                logging.info("Start collecting response time when pod in cold status")
-
-                # 4. Executing curl to get response time for every 2s and save to data
-                for _ in range(self.curl_time):
-                    # Query random data and get response time
-                    url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/processing_time/15"
-                    result = get_curl_metrics(url=url)
-
-                    logging.debug(f"result: {result}")
-                    with open(result_file, mode="a", newline="") as f:
-                        result_value = [
-                            result["time_namelookup"],
-                            result["time_connect"],
-                            result["time_appconnect"],
-                            result["time_pretransfer"],
-                            result["time_redirect"],
-                            result["time_starttransfer"],
-                            result["time_total"],
-                        ]
-                        writer = csv.writer(f)
-                        writer.writerow(result_value)
-                    logging.debug(
-                        f"Successfully write {result_value} into {result_file}"
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
                     )
+
+                    # 1. Create result file
+                    result_file = CreateResultFile.web_curl(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                    )
+
+                    # 2. Deploy ksvc for measuring
+                    K8sAPI.deploy_ksvc_web(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=20,
+                        min_scale=0,
+                        max_scale=replica,
+                        database_info=self.cluster_info.database_info,
+                    )
+
+                    # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+                    time.sleep(self.cool_down_time)
 
                     # Wait for all pods scale to zero
                     while True:
@@ -355,24 +319,63 @@ class WebMeasuring:
                             logging.info("Scaled to zero!")
                             break
                         logging.info("Waiting for pods to scale to zero ...")
+
+                    logging.info(
+                        "Start collecting response time when pod in cold status"
+                    )
+
+                    # 4. Executing curl to get response time for every 2s and save to data
+                    for _ in range(self.curl_time):
+                        # Query random data and get response time
+                        url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/processing_time/15"
+                        result = get_curl_metrics(url=url)
+
+                        logging.debug(f"result: {result}")
+                        with open(result_file, mode="a", newline="") as f:
+                            result_value = [
+                                result["time_namelookup"],
+                                result["time_connect"],
+                                result["time_appconnect"],
+                                result["time_pretransfer"],
+                                result["time_redirect"],
+                                result["time_starttransfer"],
+                                result["time_total"],
+                            ]
+                            writer = csv.writer(f)
+                            writer.writerow(result_value)
+                        logging.debug(
+                            f"Successfully write {result_value} into {result_file}"
+                        )
+
+                        # Wait for all pods scale to zero
+                        while True:
+                            if (
+                                K8sAPI.get_pod_status_by_ksvc(
+                                    namespace=self.namespace, ksvc_name=self.ksvc_name
+                                )
+                                == []
+                            ):
+                                logging.info("Scaled to zero!")
+                                break
+                            logging.info("Waiting for pods to scale to zero ...")
+                            time.sleep(2)
+
                         time.sleep(2)
 
-                    time.sleep(2)
+                    logging.info("End collecting response time when pod in warm status")
 
-                logging.info("End collecting response time when pod in warm status")
+                    # 5. Plot result
+                    PlotResult.plot_respt(
+                        result_file=result_file,
+                        output_file=f"result/1_1_curl/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                    )
 
-                # 5. Plot result
-                PlotResult.plot_respt(
-                    result_file=result_file,
-                    output_file=f"result/1_1_curl/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
-                )
-
-                # 6. Delete ksvc
-                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-                time.sleep(self.cool_down_time)
+                    # 6. Delete ksvc
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(self.cool_down_time)
 
         logging.info(
-            "End sceanario: Response time of web service when pod in warm status"
+            "End sceanario: Response time of web service when pod in cold status"
         )
 
     def get_cold_hardware_usage(self):

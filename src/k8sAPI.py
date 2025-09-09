@@ -20,6 +20,8 @@ class K8sAPI:
         min_scale: int,
         max_scale: int,
         database_info: DatabaseInfo,
+        cpu: int = 0,
+        memory: int = 0,
     ):
         """Deploy ksvc(knative service) using given parameters
 
@@ -31,6 +33,7 @@ class K8sAPI:
             hostname (str): name of the host that application will run on
             replicas (int): total number of replicas that you want for your app
         """
+
         yaml_description = {
             "apiVersion": "serving.knative.dev/v1",
             "kind": "Service",
@@ -53,8 +56,14 @@ class K8sAPI:
                                 "image": image,
                                 "ports": [{"containerPort": port}],
                                 "env": [
-                                    {"name": "DB_HOST", "value": database_info.host},
-                                    {"name": "DB_USER", "value": database_info.user},
+                                    {
+                                        "name": "DB_HOST",
+                                        "value": database_info.host,
+                                    },
+                                    {
+                                        "name": "DB_USER",
+                                        "value": database_info.user,
+                                    },
                                     {
                                         "name": "DB_PASSWORD",
                                         "value": database_info.password,
@@ -67,6 +76,18 @@ class K8sAPI:
                 }
             },
         }
+
+        if cpu != 0 and memory != 0:
+            resource_settings = {
+                "requests": {
+                    "cpu": cpu,
+                    "memory": memory,
+                },
+            }
+
+            yaml_description["spec"]["template"]["spec"]["containers"][0][
+                "resources"
+            ] = resource_settings
 
         # Load Kubernetes config and define API parameters
 

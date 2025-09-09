@@ -69,8 +69,8 @@ if __name__ == "__main__":
             web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
             # web_measuring.baseline()
             # web_measuring.get_warm_resptime()
-            # web_measuring.get_warm_hardware_usage()
-            web_measuring.get_cold_resptime()
+            web_measuring.get_warm_hardware_usage()
+            # web_measuring.get_cold_resptime()
             # web_measuring.get_cold_hardware_usage()
             del web_measuring
 

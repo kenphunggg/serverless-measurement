@@ -41,6 +41,7 @@ class WebMeasuring:
         self.cool_down_time = config["cool_down_time"]
         self.curl_time = config["curl_time"]
         self.detection_time = config["detection_time"]
+        self.resource_requests = config["resource_requests"]
         self.cluster_info: ClusterInfo = cluster_info
 
     def baseline(self):
@@ -91,79 +92,84 @@ class WebMeasuring:
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
-                logging.info(
-                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
-                )
-
-                # 1. Create result file
-                result_file = CreateResultFile.web_curl(
-                    nodename=self.hostname,
-                    filename=f"{self.arch}_{var.generate_file_time}_rep{rep}.csv",
-                )
-
-                # 2. Deploy ksvc for measuring
-                K8sAPI.deploy_ksvc_web(
-                    ksvc_name=self.ksvc_name,
-                    namespace=self.namespace,
-                    image=self.image,
-                    port=self.port,
-                    hostname=self.hostname,
-                    window_time=100,
-                    min_scale=replica,
-                    max_scale=replica,
-                    database_info=self.cluster_info.database_info,
-                )
-
-                # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                while True:
-                    if K8sAPI.all_pods_ready(
-                        pods=K8sAPI.get_pod_status_by_ksvc(
-                            namespace=self.namespace, ksvc_name=self.ksvc_name
-                        )
-                    ):
-                        logging.info("All pods ready!")
-                        break
-                    logging.info("Waiting for pods to be ready ...")
-                    time.sleep(2)
-                time.sleep(self.cool_down_time)
-
-                logging.info("Start collecting response time when pod in warm status")
-
-                # 4. Executing curl to get response time for every 2s and save to data
-                for _ in range(self.curl_time):
-                    # Query random data and get response time
-                    url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/processing_time/15"
-                    result = get_curl_metrics(url=url)
-
-                    logging.debug(f"result: {result}")
-                    with open(result_file, mode="a", newline="") as f:
-                        result_value = [
-                            result["time_namelookup"],
-                            result["time_connect"],
-                            result["time_appconnect"],
-                            result["time_pretransfer"],
-                            result["time_redirect"],
-                            result["time_starttransfer"],
-                            result["time_total"],
-                        ]
-                        writer = csv.writer(f)
-                        writer.writerow(result_value)
-                    logging.debug(
-                        f"Successfully write {result_value} into {result_file}"
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
                     )
-                    time.sleep(2)
 
-                logging.info("End collecting response time when pod in warm status")
+                    # 1. Create result file
+                    result_file = CreateResultFile.web_curl(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                    )
 
-                # 5. Plot result
-                PlotResult.plot_respt(
-                    result_file=result_file,
-                    output_file=f"result/1_1_curl/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
-                )
+                    # 2. Deploy ksvc for measuring
+                    K8sAPI.deploy_ksvc_web(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=100,
+                        min_scale=replica,
+                        max_scale=replica,
+                        database_info=self.cluster_info.database_info,
+                        cpu=resource["cpu"],
+                        memory=resource["memory"],
+                    )
 
-                # 6. Delete ksvc
-                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-                time.sleep(self.cool_down_time)
+                    # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+                    time.sleep(self.cool_down_time)
+
+                    logging.info(
+                        "Start collecting response time when pod in warm status"
+                    )
+
+                    # 4. Executing curl to get response time for every 2s and save to data
+                    for _ in range(self.curl_time):
+                        # Query random data and get response time
+                        url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/processing_time/15"
+                        result = get_curl_metrics(url=url)
+
+                        logging.debug(f"result: {result}")
+                        with open(result_file, mode="a", newline="") as f:
+                            result_value = [
+                                result["time_namelookup"],
+                                result["time_connect"],
+                                result["time_appconnect"],
+                                result["time_pretransfer"],
+                                result["time_redirect"],
+                                result["time_starttransfer"],
+                                result["time_total"],
+                            ]
+                            writer = csv.writer(f)
+                            writer.writerow(result_value)
+                        logging.debug(
+                            f"Successfully write {result_value} into {result_file}"
+                        )
+                        time.sleep(2)
+
+                    logging.info("End collecting response time when pod in warm status")
+
+                    # 5. Plot result
+                    PlotResult.plot_respt(
+                        result_file=result_file,
+                        output_file=f"result/1_1_curl/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                    )
+
+                    # 6. Delete ksvc
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(self.cool_down_time)
 
         logging.info(
             "End sceanario: Response time of web service when pod in warm status"
@@ -174,86 +180,89 @@ class WebMeasuring:
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
-                logging.info(
-                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
-                )
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
+                    )
 
-                # 1. Create result file
-                result_file = CreateResultFile.web_resource(
-                    nodename=self.hostname,
-                    filename=f"{self.arch}_{var.generate_file_time}_rep{rep}.csv",
-                )
+                    # 1. Create result file
+                    result_file = CreateResultFile.web_resource(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                    )
 
-                # 2. Deploy ksvc for measuring
-                K8sAPI.deploy_ksvc_web(
-                    ksvc_name=self.ksvc_name,
-                    namespace=self.namespace,
-                    image=self.image,
-                    port=self.port,
-                    hostname=self.hostname,
-                    window_time=100,
-                    min_scale=0,
-                    max_scale=replica,
-                    database_info=self.cluster_info.database_info,
-                )
+                    # 2. Deploy ksvc for measuring
+                    K8sAPI.deploy_ksvc_web(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=100,
+                        min_scale=0,
+                        max_scale=replica,
+                        database_info=self.cluster_info.database_info,
+                        cpu=resource["cpu"],
+                        memory=resource["memory"],
+                    )
 
-                # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                while True:
-                    if K8sAPI.all_pods_ready(
-                        pods=K8sAPI.get_pod_status_by_ksvc(
-                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                    # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+
+                    time.sleep(self.cool_down_time)
+
+                    # 4. Query url on app to trigger task then query Prometheus to get CPU and Mem usage of that action for *detection_time* seconds
+                    logging.info(
+                        "Start query prometheus to get hardware information when running web service"
+                    )
+                    start_time = time.time()
+                    url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/list-students?duration={self.detection_time}"
+                    query_url(url=url)
+
+                    while time.time() - start_time < self.detection_time:
+                        logging.info("Collecting prometheus metrics ...")
+                        cpu = Prometheus.queryCPU(instance=self.host_ip)
+                        mem = Prometheus.queryMem(instance=self.host_ip)
+                        network = Prometheus.queryNetwork(
+                            instance=self.host_ip, cluster_info=self.cluster_info
                         )
-                    ):
-                        logging.info("All pods ready!")
-                        break
-                    logging.info("Waiting for pods to be ready ...")
-                    time.sleep(2)
+                        with open(result_file, mode="a", newline="") as f:
+                            result_value = [
+                                cpu[0],
+                                cpu[1],
+                                mem[1],
+                                network[1],
+                            ]
+                            writer = csv.writer(f)
+                            writer.writerow(result_value)
+                        logging.debug(
+                            f"Successfully write {result_value} into {result_file}"
+                        )
+                        logging.info("Collecting prometheus metrics successfully!")
+                        time.sleep(0.5)
 
-                time.sleep(self.cool_down_time)
-
-                # 4. Query url on app to trigger task then query Prometheus to get CPU and Mem usage of that action for *detection_time* seconds
-                logging.info(
-                    "Start query prometheus to get hardware information when running web service"
-                )
-                start_time = time.time()
-                url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/list-students?duration={self.detection_time}"
-                query_url(url=url)
-
-                while time.time() - start_time < self.detection_time:
-                    logging.info("Collecting prometheus metrics ...")
-                    cpu = Prometheus.queryCPU(instance=self.host_ip)
-                    mem = Prometheus.queryMem(instance=self.host_ip)
-                    network = Prometheus.queryNetwork(
-                        instance=self.host_ip, cluster_info=self.cluster_info
+                    # 5. Plot result
+                    PlotResult.plot_hardware(
+                        result_file=result_file,
+                        output_file=f"result/1_2_resource_web/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
                     )
-                    with open(result_file, mode="a", newline="") as f:
-                        result_value = [
-                            cpu[0],
-                            cpu[1],
-                            mem[1],
-                            network[1],
-                        ]
-                        writer = csv.writer(f)
-                        writer.writerow(result_value)
-                    logging.debug(
-                        f"Successfully write {result_value} into {result_file}"
+
+                    logging.info(
+                        "End query prometheus to get hardware information when running streaming serviced"
                     )
-                    logging.info("Collecting prometheus metrics successfully!")
-                    time.sleep(0.5)
 
-                # 5. Plot result
-                PlotResult.plot_hardware(
-                    result_file=result_file,
-                    output_file=f"result/1_2_resource_web/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
-                )
-
-                logging.info(
-                    "End query prometheus to get hardware information when running streaming serviced"
-                )
-
-                # 6. Delete ksvc
-                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-                time.sleep(self.cool_down_time)
+                    # 6. Delete ksvc
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(self.cool_down_time)
 
         logging.info("End sceanario: Collecting CPU/RAM usage when pod in warm status")
 

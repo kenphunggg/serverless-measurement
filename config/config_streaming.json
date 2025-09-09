@@ -7,7 +7,7 @@
                 1
             ],
             "ksvc_name": "measure-streaming",
-            "arch": "x86",
+            "arch": "x86", 
             "image": "docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff",
             "port": 5000,
             "namespace": "serverless",

@@ -12,8 +12,15 @@ spec:
         autoscaling.knative.dev/max-scale: '1'
     spec:
       containers:
-      - image: docker.io/tienshawn/measure-web:fix-sigterm-1.0@sha256:f66498589b9dbcba892405a997094997864561f52003d0999d8ad5dc572ec0d4
+      - image: docker.io/lazyken/measure-app:v1@sha256:a50a275cc158657bae4a86de629dbc9efc6b9ed4d238263d0f6cdafd7363a53c
         ports:
         - containerPort: 5000
+        env:
+            - name: DB_HOST
+              value: '192.168.17.162'
+            - name: DB_USER
+              value: 'thai'
+            - name: DB_PASSWORD
+              value: 'PQThai29112003'
       nodeSelector:
         kubernetes.io/hostname: cloud-node

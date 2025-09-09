@@ -39,6 +39,8 @@ This is setting for `Prometheus` server
 
 ### Web Measurement
 
+Our measurement provide a web service that query database for measurement purpose. [See more](config/setup/web)
+
 Sample configuration for web services is shown in [config_web.json](config/config_web.json)
 
 ```js
@@ -76,6 +78,8 @@ Sample configuration for web services is shown in [config_web.json](config/confi
 - `detection_time`: to measure hardware usage, we make the pod running in `detection_time` seconds to measure hardware usage
 
 ### Streaming Measurement
+
+Our measurement provide a streaming service that catch streaming thread from cloud-node for measurement purpose. [See more](config/setup/streaming/README.md)
 
 Sample configuration for web services is shown in [config_streaming.json](config/config_streaming.json)
 

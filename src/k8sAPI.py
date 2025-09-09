@@ -5,10 +5,106 @@ import logging
 import time
 import re
 
+from src.lib import DatabaseInfo
+
 
 class K8sAPI:
     @staticmethod
-    def deploy_ksvc(
+    def deploy_ksvc_web(
+        ksvc_name: str,
+        namespace: str,
+        image: str,
+        port: int,
+        hostname: str,
+        window_time: int,
+        min_scale: int,
+        max_scale: int,
+        database_info: DatabaseInfo,
+    ):
+        """Deploy ksvc(knative service) using given parameters
+
+        Args:
+            ksvc_name (str): name of ksvc
+            namespace (str): namespace of your ksvc
+            image (str): your image to deploy ksvc
+            port (int): port your application run on
+            hostname (str): name of the host that application will run on
+            replicas (int): total number of replicas that you want for your app
+        """
+        yaml_description = {
+            "apiVersion": "serving.knative.dev/v1",
+            "kind": "Service",
+            "metadata": {
+                "name": ksvc_name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "autoscaling.knative.dev/window": f"{window_time}s",
+                            "autoscaling.knative.dev/min-scale": f"{min_scale}",
+                            "autoscaling.knative.dev/max-scale": f"{max_scale}",
+                        }
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "image": image,
+                                "ports": [{"containerPort": port}],
+                                "env": [
+                                    {"name": "DB_HOST", "value": database_info.host},
+                                    {"name": "DB_USER", "value": database_info.user},
+                                    {
+                                        "name": "DB_PASSWORD",
+                                        "value": database_info.password,
+                                    },
+                                ],
+                            }
+                        ],
+                        "nodeSelector": {"kubernetes.io/hostname": hostname},
+                    },
+                }
+            },
+        }
+
+        # Load Kubernetes config and define API parameters
+
+        config.load_kube_config()
+        api = client.CustomObjectsApi()
+        group = "serving.knative.dev"
+        version = "v1"
+        plural = "services"
+
+        # --- Apply the configuration to the cluster ---
+        try:
+            # Check if the object already exists
+            api.get_namespaced_custom_object(
+                group, version, namespace, plural, ksvc_name
+            )
+            # If it exists, patch it
+            logging.info(f"Knative Service '{ksvc_name}' already exists. Patching...")
+            api.patch_namespaced_custom_object(
+                group, version, namespace, plural, ksvc_name, yaml_description
+            )
+            logging.info(f"Knative Service '{ksvc_name}' patched successfully.")
+        except ApiException as e:
+            if e.status == 404:
+                # If it doesn't exist, create it
+                logging.info(f"Knative Service '{ksvc_name}' not found. Creating...")
+                api.create_namespaced_custom_object(
+                    group, version, namespace, plural, yaml_description
+                )
+                logging.info(f"Knative Service '{ksvc_name}' created successfully.")
+            else:
+                logging.error(f"API Error for '{ksvc_name}': {e}")
+
+    @staticmethod
+    def patch_scale2zero():
+        pass
+
+    @staticmethod
+    def deploy_ksvc_streaming(
         ksvc_name: str,
         namespace: str,
         image: str,

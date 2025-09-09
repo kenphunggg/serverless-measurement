@@ -3,8 +3,44 @@ import subprocess
 import sys
 import os
 import requests
+from typing import List
 
 import time
+
+
+class Node:
+    def __init__(self, ip_address, hostname, interface):
+        self.ip_address = ip_address
+        self.hostname = hostname
+        self.interface = interface
+
+    def __repr__(self):
+        return f"Node(hostname='{self.hostname}', ip='{self.ip_address}', interface='{self.interface}')"
+
+
+class DatabaseInfo:
+    def __init__(self, host, user, password):
+        self.host = host
+        self.user = user
+        self.password = password
+
+
+class ClusterInfo:
+    def __init__(
+        self,
+        master_node: Node,
+        worker_nodes: List[Node] = None,
+        database_info: DatabaseInfo = None,
+    ):
+        self.master_node = master_node
+        self.worker_nodes = worker_nodes if worker_nodes is not None else []
+        self.database_info: DatabaseInfo = database_info
+
+    def add_worker(self, worker_node: Node):
+        self.worker_nodes.append(worker_node)
+
+    def __repr__(self):
+        return f"Master: {self.master_node}, Workers: {self.worker_nodes}"
 
 
 class CreateResultFile:

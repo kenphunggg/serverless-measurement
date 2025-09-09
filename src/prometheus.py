@@ -1,5 +1,6 @@
 import json
 from prometheus_api_client import PrometheusConnect
+from src.lib import ClusterInfo, Node
 
 import logging
 
@@ -92,7 +93,7 @@ class Prometheus:
         )
         return Prometheus.query(query=query_mem_url)
 
-    def queryNetwork(instance: str):
+    def queryNetwork(instance: str, cluster_info: ClusterInfo):
         """
         query mem usage in (%)
         Args:
@@ -101,8 +102,14 @@ class Prometheus:
         Returns:
             list: [timestamp, value]
         """
+        worker_nodes = cluster_info.worker_nodes
+        interface: str
+        for node in worker_nodes:
+            if node.ip_address == instance:
+                interface = node.interface
+
         query_network_receive = (
-            f"rate(node_network_receive_bytes_total{{device='{INTERFACE}', instance='{instance}:9100', job='node_exporters'}}[1m])"
+            f"rate(node_network_receive_bytes_total{{device='{interface}', instance='{instance}:9100', job='node_exporters'}}[1m])"
             f" / (1024 * 1024)"
         )
         return Prometheus.query(query=query_network_receive)

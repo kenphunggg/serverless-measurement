@@ -2,9 +2,11 @@ import logging
 import json
 import time
 import datetime
+from typing import List
 
 from src.main_tasks.web_measuring import WebMeasuring
 from src.main_tasks.streaming import StreamingMeasuring
+from src.lib import ClusterInfo, Node, DatabaseInfo
 from src import variables as var
 
 
@@ -25,18 +27,52 @@ if __name__ == "__main__":
     var.reload_var()
 
     # Load the file's content into a dictionary
-    with open("config/config.json", "r") as f:
+    with open("config/config_web.json", "r") as f:
         data = json.load(f)
     test_cases = data["test_cases"]
+
+    # Load cluster info
+    cluster_info = data["cluster_info"]
+    master_node = Node(
+        ip_address=cluster_info["master-node"]["host_ip"],
+        hostname=cluster_info["master-node"]["hostname"],
+        interface=cluster_info["master-node"]["interface"],
+    )
+    worker_nodes: List[Node] = []
+    worker_nodes_json = cluster_info["worker-nodes"]
+    for node_data in worker_nodes_json:
+        node = Node(
+            ip_address=node_data["host_ip"],
+            hostname=node_data["hostname"],
+            interface=node_data["interface"],
+        )
+        worker_nodes.append(node)
+
+    # Load database info
+    database_info_json = data["database_info"]
+    database_info = DatabaseInfo(
+        host=database_info_json["db_host"],
+        user=database_info_json["db_user"],
+        password=database_info_json["db_password"],
+    )
+
+    my_cluster = ClusterInfo(
+        master_node=master_node, worker_nodes=worker_nodes, database_info=database_info
+    )
+
+    logging.info(my_cluster)
 
     # Run all test cases
     for test_case in test_cases:
         if test_case["test_case"] == "web":
             # pass
-            web_measuring = WebMeasuring(config=test_case)
-            web_measuring.baseline()
-            web_measuring.get_warm_resptime()
-            web_measuring.get_warm_hardware_usage()
+            web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
+            # web_measuring.baseline()
+            # web_measuring.get_warm_resptime()
+            # web_measuring.get_warm_hardware_usage()
+            web_measuring.get_cold_resptime()
+            # web_measuring.get_cold_hardware_usage()
+            del web_measuring
 
         elif test_case["test_case"] == "streaming":
             # pass
@@ -46,9 +82,6 @@ if __name__ == "__main__":
             streaming_measuring.measure()
 
         elif test_case["test_case"] == "":
-            pass
-
-        else:
             pass
 
     end_time = datetime.datetime.now()

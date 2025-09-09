@@ -27,3 +27,5 @@ result/2_3_streaming_prom/*
 
 # Ignore python repos
 __pycache__/
+
+data/

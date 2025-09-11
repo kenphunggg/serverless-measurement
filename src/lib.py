@@ -108,6 +108,14 @@ class CreateResultFile:
             header="timestamp,cpu_usage(%),mem_usage(%),network(MBps)\n",
         )
 
+    def web_curl_cold(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="1_3_curl_cold",
+            nodename=nodename,
+            filename=filename,
+            header="time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total\n",
+        )
+
     @staticmethod
     def streaming_baseline(nodename: str, filename: str):
         return CreateResultFile.create(

@@ -12,7 +12,7 @@ spec:
         autoscaling.knative.dev/max-scale: '1'
     spec:
       containers:
-      - image: docker.io/lazyken/measure-app:v1@sha256:a50a275cc158657bae4a86de629dbc9efc6b9ed4d238263d0f6cdafd7363a53c
+      - image: docker.io/lazyken/measure-app:v2@sha256:b391d7ef71ec0812c05fd2d06973103ee95b30c842c4ce4d375f55b36ca19a4a
         ports:
         - containerPort: 5000
         env:

@@ -13,17 +13,81 @@
             "namespace": "serverless",
             "hostname": "cloud-node",
             "host_ip": "192.168.17.162",
-            "cool_down_time": 20,
-            "curl_time": 3,
-            "detection_time": 30,
+            "cool_down_time": 30,
+            "curl_time": 60,
+            "detection_time": 60,
             "resource_requests": [
                 {
                     "cpu": 0,
                     "memory": 0
                 },
                 {
-                    "cpu": "500m",
+                    "cpu": "100m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "100m",
                     "memory": "256Mi"
+                },
+                {
+                    "cpu": "100m",
+                    "memory": "384Mi"
+                },
+                {
+                    "cpu": "100m",
+                    "memory": "512Mi"
+                },
+                {
+                    "cpu": "100m",
+                    "memory": "640Mi"
+                },
+                {
+                    "cpu": "100m",
+                    "memory": "768Mi"
+                },
+                {
+                    "cpu": "100m",
+                    "memory": "896Mi"
+                },
+                {
+                    "cpu": "100m",
+                    "memory": "1024Mi"
+                },
+                {
+                    "cpu": "200m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "300m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "400m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "500m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "600m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "700m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "800m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "900m",
+                    "memory": "128Mi"
+                },
+                {
+                    "cpu": "1000m",
+                    "memory": "128Mi"
                 }
             ]
         }
@@ -55,6 +119,6 @@
     "database_info": {
         "db_host": "192.168.17.162",
         "db_user": "thai",
-        "db_password": "PQThai29112003"
+        "db_password": "1"
     }
 }

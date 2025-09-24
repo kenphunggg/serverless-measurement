@@ -5,7 +5,7 @@ import logging
 import time
 import re
 
-from src.lib import DatabaseInfo
+from src.lib import DatabaseInfo, StreamingInfo
 
 
 class K8sAPI:
@@ -46,8 +46,8 @@ class K8sAPI:
                     "metadata": {
                         "annotations": {
                             "autoscaling.knative.dev/window": f"{window_time}s",
-                            "autoscaling.knative.dev/min-scale": f"{min_scale}",
-                            "autoscaling.knative.dev/max-scale": f"{max_scale}",
+                            "autoscaling.knative.dev/min-scale": min_scale,
+                            "autoscaling.knative.dev/max-scale": max_scale,
                         }
                     },
                     "spec": {
@@ -131,7 +131,12 @@ class K8sAPI:
         image: str,
         port: int,
         hostname: str,
-        replicas: int,
+        window_time: int,
+        min_scale: int,
+        max_scale: int,
+        streaming_info: StreamingInfo,
+        cpu: int = 0,
+        memory: int = 0,
     ):
         """Deploy ksvc(knative service) using given parameters
 
@@ -154,9 +159,9 @@ class K8sAPI:
                 "template": {
                     "metadata": {
                         "annotations": {
-                            "autoscaling.knative.dev/window": "100s",
-                            "autoscaling.knative.dev/min-scale": f"{replicas}",
-                            "autoscaling.knative.dev/max-scale": f"{replicas}",
+                            "autoscaling.knative.dev/window": f"{window_time}s",
+                            "autoscaling.knative.dev/min-scale": min_scale,
+                            "autoscaling.knative.dev/max-scale": max_scale,
                         }
                     },
                     "spec": {
@@ -164,6 +169,12 @@ class K8sAPI:
                             {
                                 "image": image,
                                 "ports": [{"containerPort": port}],
+                                "env": [
+                                    {
+                                        "name": "SOURCE_IP",
+                                        "value": streaming_info.streaming_source,
+                                    },
+                                ],
                             }
                         ],
                         "nodeSelector": {"kubernetes.io/hostname": hostname},
@@ -171,6 +182,18 @@ class K8sAPI:
                 }
             },
         }
+
+        if cpu != 0 and memory != 0:
+            resource_settings = {
+                "requests": {
+                    "cpu": cpu,
+                    "memory": memory,
+                },
+            }
+
+            yaml_description["spec"]["template"]["spec"]["containers"][0][
+                "resources"
+            ] = resource_settings
 
         # Load Kubernetes config and define API parameters
 

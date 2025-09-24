@@ -32,3 +32,5 @@ result/2_3_streaming_prom/*
 __pycache__/
 
 data/
+
+note.txt

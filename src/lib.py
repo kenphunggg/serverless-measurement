@@ -25,16 +25,22 @@ class DatabaseInfo:
         self.password = password
 
 
+class StreamingInfo:
+    def __init__(self, streaming_source):
+        self.streaming_source = streaming_source
+
 class ClusterInfo:
     def __init__(
         self,
         master_node: Node,
         worker_nodes: List[Node] = None,
         database_info: DatabaseInfo = None,
+        streaming_info: StreamingInfo = None
     ):
         self.master_node = master_node
         self.worker_nodes = worker_nodes if worker_nodes is not None else []
         self.database_info: DatabaseInfo = database_info
+        self.streaming_info: StreamingInfo = streaming_info
 
     def add_worker(self, worker_node: Node):
         self.worker_nodes.append(worker_node)
@@ -154,6 +160,55 @@ class CreateResultFile:
 
 
 def get_curl_metrics(url: str) -> dict:
+    """
+    Executes a curl command and returns the timing metrics as a dictionary.
+
+    Args:
+        url: The URL to test.
+
+    Returns:
+        A dictionary containing the timing metrics as floats.
+    """
+    # A machine-readable format: key:%{variable}\n
+    # This makes parsing the output trivial.
+    curl_format = """
+    time_namelookup:%{time_namelookup}
+    time_connect:%{time_connect}
+    time_appconnect:%{time_appconnect}
+    time_pretransfer:%{time_pretransfer}
+    time_redirect:%{time_redirect}
+    time_starttransfer:%{time_starttransfer}
+    time_total:%{time_total}
+    """
+    command = ["curl", "-s", "-o", "/dev/null", "-w", curl_format, url]
+
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+
+        # Parse the output into a dictionary
+        metrics_dict = {}
+        output_lines = result.stdout.strip().splitlines()
+        for line in output_lines:
+            key, value = line.split(":", 1)
+            # Convert the value to a float
+            metrics_dict[key.strip()] = float(value)
+
+        logging.info("Collecting metrics successfully!")
+        return metrics_dict
+
+    except FileNotFoundError:
+        logging.error(
+            "Error: 'curl' command not found. Please ensure it is installed and in your PATH."
+        )
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error executing curl command for {url}: {e.stderr}")
+        sys.exit(1)
+    except (ValueError, IndexError) as e:
+        logging.error(f"Error parsing curl output: {e}")
+        sys.exit(1)
+        
+def get_time_to_first_frame(url: str) -> dict:
     """
     Executes a curl command and returns the timing metrics as a dictionary.
 

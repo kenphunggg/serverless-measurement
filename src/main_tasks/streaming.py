@@ -13,6 +13,7 @@ from src.lib import (
     create_streaming_prom_file,
     create_streaming_stats_file,
     CreateResultFile,
+    ClusterInfo,
 )
 from src.prometheus import Prometheus
 from src import variables as var
@@ -20,7 +21,8 @@ from src.k8sAPI import K8sAPI
 
 
 class StreamingMeasuring:
-    def __init__(self, config):
+    def __init__(self, config, cluster_info: ClusterInfo):
+        logging.info("Loading config of 'StreamingMeasuring'")
         self.repetition = config["repetition"]
         self.replicas = config["replicas"]
         self.ksvc_name = config["ksvc_name"]
@@ -33,7 +35,8 @@ class StreamingMeasuring:
         self.cool_down_time = config["cool_down_time"]
         self.curl_time = config["curl_time"]
         self.detection_time = config["detection_time"]
-        self.resolution = config["resolution"]
+        self.resource_requests = config["resource_requests"]
+        self.cluster_info: ClusterInfo = cluster_info
 
     def baseline(self):
         logging.info(
@@ -78,95 +81,104 @@ class StreamingMeasuring:
                 output_file=f"result/2_0_baseline/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
             )
 
-    def timeToFirstFrame(self):
+    def get_warm_timeToFirstFrame(self):
         logging.info(
             "Sceanario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
         )
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
-                logging.info(
-                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
-                )
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
+                    )
 
-                # 2. Create result file
-                result_file = CreateResultFile.streaming_timeToFirstFrame(
-                    nodename=self.hostname,
-                    filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
-                )
+                    # 2. Create result file
+                    result_file = CreateResultFile.streaming_timeToFirstFrame(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
+                    )
 
-                # 3. Deploy ksvc for measuring
-                K8sAPI.deploy_ksvc(
-                    ksvc_name=self.ksvc_name,
-                    namespace=self.namespace,
-                    image=self.image,
-                    port=self.port,
-                    hostname=self.hostname,
-                    replicas=replica,
-                )
+                    # 3. Deploy ksvc for measuring
+                    K8sAPI.deploy_ksvc_streaming(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=100,
+                        min_scale=replica,
+                        max_scale=replica,
+                        streaming_info=self.cluster_info.streaming_info,
+                        cpu=resource["cpu"],
+                        memory=resource["memory"],
+                    )
 
-                # 4. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                while True:
-                    if K8sAPI.all_pods_ready(
-                        pods=K8sAPI.get_pod_status_by_ksvc(
-                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                    # 4. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+                    time.sleep(self.cool_down_time)
+
+                    # 5. Executing curl save to data
+                    for _ in range(self.curl_time):
+                        start_time = time.time()
+                        # 5.1. Executing curl to get time to first frame
+                        # Curl to the url to trigger streaming service
+                        # Result of curl is:
+                        # [time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total]
+                        # We only focus on time_starttransfer which is time to first frame
+                        logging.info("Start trigger service")
+                        result = get_curl_metrics(
+                            url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/10"
                         )
-                    ):
-                        logging.info("All pods ready!")
-                        break
-                    logging.info("Waiting for pods to be ready ...")
-                    time.sleep(2)
 
-                time.sleep(self.cool_down_time)
+                        logging.debug(
+                            f"Curl: http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/10"
+                        )
+                        logging.debug(f"Trigger return {result}")
 
-                # 5. Executing curl save to data
-                for _ in range(self.curl_time):
-                    start_time = time.time()
-                    # 5.1. Executing curl to get time to first frame
-                    # Curl to the url to trigger streaming service
-                    # Result of curl is:
-                    # [time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total]
-                    # We only focus on time_starttransfer which is time to first frame
-                    logging.info("Start trigger service")
-                    result = get_curl_metrics(
-                        url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/10"
+                        with open(result_file, mode="a", newline="") as f:
+                            result_value = [
+                                result["time_namelookup"],
+                                result["time_connect"],
+                                result["time_appconnect"],
+                                result["time_pretransfer"],
+                                result["time_redirect"],
+                                result["time_starttransfer"],
+                                result["time_total"],
+                            ]
+                            writer = csv.writer(f)
+                            writer.writerow(result_value)
+                        logging.debug(
+                            f"Successfully write {result_value} into {result_file}"
+                        )
+                        while (time.time() - start_time) < 10:
+                            time.sleep(1)
+
+                    PlotResult.timeToFirstFrame(
+                        result_file=result_file,
+                        output_file=f"result/2_1_timeToFirstFrame/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
+                        resolution=self.resolution,
                     )
 
-                    logging.debug(
-                        f"Curl: http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/10"
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+
+                    time.sleep(self.cool_down_time)
+
+                    logging.info(
+                        "End collecting time to first frame when pod in warm status"
                     )
-                    logging.debug(f"Trigger return {result}")
 
-                    with open(result_file, mode="a", newline="") as f:
-                        result_value = [
-                            result["time_namelookup"],
-                            result["time_connect"],
-                            result["time_appconnect"],
-                            result["time_pretransfer"],
-                            result["time_redirect"],
-                            result["time_starttransfer"],
-                            result["time_total"],
-                        ]
-                        writer = csv.writer(f)
-                        writer.writerow(result_value)
-                    logging.debug(
-                        f"Successfully write {result_value} into {result_file}"
-                    )
-                    while (time.time() - start_time) < 10:
-                        time.sleep(1)
-
-                PlotResult.timeToFirstFrame(
-                    result_file=result_file,
-                    output_file=f"result/2_1_timeToFirstFrame/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
-                    resolution=self.resolution,
-                )
-
-                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-
-                time.sleep(self.cool_down_time)
-
-                logging.info(
-                    "End collecting time to first frame when pod in warm status"
-                )
+        logging.info(
+            "End sceanario: Response time of streaming service when pod in warm status"
+        )
 
     def measure(self):
         logging.info("Sceanario: Data of streaming service when pod in warm status")

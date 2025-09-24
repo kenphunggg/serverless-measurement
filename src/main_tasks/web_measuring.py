@@ -23,11 +23,6 @@ from src.prometheus import Prometheus
 
 class WebMeasuring:
     def __init__(self, config, cluster_info: ClusterInfo):
-        """Get response time of web service using curl when pod in warm state(physical pod already exist)
-
-        Args:
-            config (dict): Config that you loaded that have the save format as in `/config/config.json`
-        """
         logging.info("Loading config of 'WebMeasuring'")
         self.repetition = config["repetition"]
         self.replicas = config["replicas"]

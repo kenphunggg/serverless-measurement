@@ -12,8 +12,11 @@ spec:
         autoscaling.knative.dev/max-scale: '1'
     spec:
       containers:
-      - image: docker.io/lazyken/measure-streaming:v1@sha256:3edd67c01b0326fbd9a194d60899cc7f88b888466393d68f9bb1b169dae1a1ff
+      - image: docker.io/lazyken/measure-streaming:v3@sha256:e27e18c001aee1f5bd9ac787a856bd0278b2890b1555b992d4e301a1f72c7e7d
         ports:
-        - containerPort: 5000
+        - containerPort: 8080
+        env:
+        - name: SOURCE_IP
+          value: "192.168.17.162:2000"
       nodeSelector:
         kubernetes.io/hostname: cloud-node

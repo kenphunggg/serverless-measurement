@@ -2,7 +2,7 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: measure-web
-  namespace: serverless
+  namespace: default
 spec:
   template:
     metadata:

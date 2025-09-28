@@ -1,9 +1,11 @@
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
+from kubernetes.stream import stream
 
 import logging
 import time
 import re
+from typing import List
 
 from src.lib import DatabaseInfo, StreamingInfo
 
@@ -46,8 +48,8 @@ class K8sAPI:
                     "metadata": {
                         "annotations": {
                             "autoscaling.knative.dev/window": f"{window_time}s",
-                            "autoscaling.knative.dev/min-scale": min_scale,
-                            "autoscaling.knative.dev/max-scale": max_scale,
+                            "autoscaling.knative.dev/min-scale": f"{min_scale}",
+                            "autoscaling.knative.dev/max-scale": f"{max_scale}",
                         }
                     },
                     "spec": {
@@ -121,10 +123,6 @@ class K8sAPI:
                 logging.error(f"API Error for '{ksvc_name}': {e}")
 
     @staticmethod
-    def patch_scale2zero():
-        pass
-
-    @staticmethod
     def deploy_ksvc_streaming(
         ksvc_name: str,
         namespace: str,
@@ -160,8 +158,8 @@ class K8sAPI:
                     "metadata": {
                         "annotations": {
                             "autoscaling.knative.dev/window": f"{window_time}s",
-                            "autoscaling.knative.dev/min-scale": min_scale,
-                            "autoscaling.knative.dev/max-scale": max_scale,
+                            "autoscaling.knative.dev/min-scale": f"{min_scale}",
+                            "autoscaling.knative.dev/max-scale": f"{max_scale}",
                         }
                     },
                     "spec": {
@@ -225,6 +223,78 @@ class K8sAPI:
                 logging.info(f"Knative Service '{ksvc_name}' created successfully.")
             else:
                 logging.error(f"API Error for '{ksvc_name}': {e}")
+
+    @staticmethod
+    def exec_cmd_pod(
+        command: List[str], namespace: str, podname: str, container_name: str
+    ):
+
+        config.load_kube_config()
+        core_v1 = client.CoreV1Api()
+
+        try:
+            resp = stream(
+                core_v1.connect_get_namespaced_pod_exec,
+                podname,
+                namespace,
+                command=command,
+                container=container_name,
+                stderr=True,  # Include stderr in the response
+                stdin=False,  # No input stream
+                stdout=True,  # Include stdout in the response
+                tty=False,  # Not a TTY session
+            )
+
+            # The 'resp' object here is the raw string output from stdout
+            logging.debug(f"STDOUT from pod '{podname}':\n{resp}")
+            return resp
+
+        except client.ApiException as e:
+            # The stream function raises an ApiException on errors.
+            # The body of the exception contains stderr.
+            logging.error(f"ERROR executing command {command} in pod '{podname}':")
+            # In this case, the 'e.body' contains the stderr output
+            logging.error(e.body)
+            return e.body
+
+    @staticmethod
+    def kill_pod_proccess(
+        namespace: str, ksvc: str, keyword: str, container_name: str = "user-container"
+    ):
+        pod_names = K8sAPI.get_pods(namespace=namespace, ksvc=ksvc)
+
+        if not pod_names:
+            logging.error(
+                f"No pods found for ksvc '{ksvc}' in namespace '{namespace}'."
+            )
+            return
+
+        pod_name = pod_names[0]
+
+        grep_pattern = f"[{keyword[0]}]{keyword[1:]}"
+        shell_command_ls = f"ps aux | grep '{grep_pattern}' | awk '{{print $2}}'"
+        command_to_exec_ls = ["/bin/sh", "-c", shell_command_ls]
+
+        pid = K8sAPI.exec_cmd_pod(
+            command=command_to_exec_ls,
+            namespace=namespace,
+            podname=pod_name,
+            container_name=container_name,
+        )
+
+        logging.info(f"Preparing to remove pid {pid} of pod {pod_name}")
+
+        shell_command_kill = f"kill {pid}"
+        command_to_exec_kill = ["/bin/sh", "-c", shell_command_kill]
+
+        resp = K8sAPI.exec_cmd_pod(
+            command=command_to_exec_kill,
+            namespace=namespace,
+            podname=pod_name,
+            container_name=container_name,
+        )
+
+        logging.info(f"Successfully kill {keyword} | Response: {resp}")
 
     @staticmethod
     def get_pod_status_by_ksvc(namespace: str, ksvc_name: str) -> list:
@@ -335,17 +405,17 @@ class K8sAPI:
             else:
                 logging.error(f"Error deleting Knative Service '{ksvc}': {e.reason}")
 
-        while True:
-            pods = K8sAPI.get_pod_status_by_ksvc(namespace=namespace, ksvc_name=ksvc)
-            logging.info(
-                f"Waiting for all pods in ksvc {ksvc}, namespace {namespace} to be deleted ..."
-            )
-            time.sleep(2)
-            if not pods:
-                logging.info(
-                    f"All pods in ksvc {ksvc}, namespace {namespace} successfully deleted from the cluster."
-                )
-                break
+        # while True:
+        #     pods = K8sAPI.get_pod_status_by_ksvc(namespace=namespace, ksvc_name=ksvc)
+        #     logging.info(
+        #         f"Waiting for all pods in ksvc {ksvc}, namespace {namespace} to be deleted ..."
+        #     )
+        #     time.sleep(2)
+        #     if not pods:
+        #         logging.info(
+        #             f"All pods in ksvc {ksvc}, namespace {namespace} successfully deleted from the cluster."
+        #         )
+        #         break
 
     @staticmethod
     def get_pods(namespace: str, ksvc: str):

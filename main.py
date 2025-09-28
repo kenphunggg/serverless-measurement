@@ -27,7 +27,7 @@ if __name__ == "__main__":
     var.reload_var()
 
     # Load the file's content into a dictionary
-    with open("config/config_streaming.json", "r") as f:
+    with open("config/config_web_test.json", "r") as f:
         data = json.load(f)
     test_cases = data["test_cases"]
 
@@ -57,7 +57,10 @@ if __name__ == "__main__":
     )
 
     streaming_info_json = data["streaming_info"]
-    streaming_info = StreamingInfo(streaming_source=streaming_info_json["source_ip"])
+    streaming_info = StreamingInfo(
+        streaming_source=streaming_info_json["source_ip"],
+        streaming_uri=streaming_info_json["stream_uri"],
+    )
 
     my_cluster = ClusterInfo(
         master_node=master_node,
@@ -73,11 +76,10 @@ if __name__ == "__main__":
         if test_case["test_case"] == "web":
             # pass
             web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
-            # web_measuring.baseline()
+            web_measuring.baseline()
             web_measuring.get_warm_resptime()
             web_measuring.get_warm_hardware_usage()
             web_measuring.get_cold_resptime()
-            # web_measuring.get_cold_hardware_usage()
             del web_measuring
 
         elif test_case["test_case"] == "streaming":
@@ -87,7 +89,8 @@ if __name__ == "__main__":
             )
             # streaming_measuring.baseline()
             # streaming_measuring.get_warm_timeToFirstFrame()
-            # streaming_measuring.measure()
+            # streaming_measuring.get_fps()
+            # streaming_measuring.get_hardware_resource()
             del streaming_measuring
 
         elif test_case["test_case"] == "":

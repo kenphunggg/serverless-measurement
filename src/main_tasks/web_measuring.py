@@ -60,7 +60,10 @@ class WebMeasuring:
                 logging.info("Collecting prometheus metrics ...")
                 cpu = Prometheus.queryCPU(instance=self.host_ip)
                 mem = Prometheus.queryMem(instance=self.host_ip)
-                network = Prometheus.queryNetwork(
+                networkIn = Prometheus.queryNetworkIn(
+                    instance=self.host_ip, cluster_info=self.cluster_info
+                )
+                networkOut = Prometheus.queryNetworkOut(
                     instance=self.host_ip, cluster_info=self.cluster_info
                 )
                 with open(result_file, mode="a", newline="") as f:
@@ -68,7 +71,8 @@ class WebMeasuring:
                         cpu[0],
                         cpu[1],
                         mem[1],
-                        network[1],
+                        networkIn[1],
+                        networkOut[1],
                     ]
                     writer = csv.writer(f)
                     writer.writerow(result_value)
@@ -133,25 +137,26 @@ class WebMeasuring:
                     # 4. Executing curl to get response time for every 2s and save to data
                     for _ in range(self.curl_time):
                         # Query random data and get response time
-                        url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/processing_time/15"
+                        url = f"http://{self.ksvc_name}.{self.namespace}/processing_time/15"
                         result = get_curl_metrics(url=url)
 
                         logging.debug(f"result: {result}")
-                        with open(result_file, mode="a", newline="") as f:
-                            result_value = [
-                                result["time_namelookup"],
-                                result["time_connect"],
-                                result["time_appconnect"],
-                                result["time_pretransfer"],
-                                result["time_redirect"],
-                                result["time_starttransfer"],
-                                result["time_total"],
-                            ]
-                            writer = csv.writer(f)
-                            writer.writerow(result_value)
-                        logging.debug(
-                            f"Successfully write {result_value} into {result_file}"
-                        )
+                        if result:
+                            with open(result_file, mode="a", newline="") as f:
+                                result_value = [
+                                    result["time_namelookup"],
+                                    result["time_connect"],
+                                    result["time_appconnect"],
+                                    result["time_pretransfer"],
+                                    result["time_redirect"],
+                                    result["time_starttransfer"],
+                                    result["time_total"],
+                                ]
+                                writer = csv.writer(f)
+                                writer.writerow(result_value)
+                            logging.debug(
+                                f"Successfully write {result_value} into {result_file}"
+                            )
                         time.sleep(2)
 
                     logging.info("End collecting response time when pod in warm status")
@@ -220,14 +225,17 @@ class WebMeasuring:
                         "Start query prometheus to get hardware information when running web service"
                     )
                     start_time = time.time()
-                    url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/list-students?duration={self.detection_time}"
+                    url = f"http://{self.ksvc_name}.{self.namespace}/list-students?duration={self.detection_time}"
                     query_url(url=url)
 
                     while time.time() - start_time < self.detection_time:
                         logging.info("Collecting prometheus metrics ...")
                         cpu = Prometheus.queryCPU(instance=self.host_ip)
                         mem = Prometheus.queryMem(instance=self.host_ip)
-                        network = Prometheus.queryNetwork(
+                        networkIn = Prometheus.queryNetworkIn(
+                            instance=self.host_ip, cluster_info=self.cluster_info
+                        )
+                        networkOut = Prometheus.queryNetworkOut(
                             instance=self.host_ip, cluster_info=self.cluster_info
                         )
                         with open(result_file, mode="a", newline="") as f:
@@ -235,7 +243,8 @@ class WebMeasuring:
                                 cpu[0],
                                 cpu[1],
                                 mem[1],
-                                network[1],
+                                networkIn[1],
+                                networkOut[1],
                             ]
                             writer = csv.writer(f)
                             writer.writerow(result_value)
@@ -331,7 +340,7 @@ class WebMeasuring:
                     # 4. Executing curl to get response time for every 2s and save to data
                     for current in range(self.curl_time):
                         # Query random data and get response time
-                        url = f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/processing_time/15"
+                        url = f"http://{self.ksvc_name}.{self.namespace}/processing_time/15"
                         result = get_curl_metrics(url=url)
 
                         logging.debug(f"result: {result}")
@@ -382,81 +391,92 @@ class WebMeasuring:
             "End sceanario: Response time of web service when pod in cold status"
         )
 
-    def get_cold_hardware_usage(self):
-        pass
-
 
 class PlotResult:
     @staticmethod
     def plot_baseline(result_file, output_file):
-        logging.info("Start plot baseline hardware usage")
+        """
+        Reads hardware usage data from a CSV and generates a 2x2 boxplot grid
+        for CPU, Memory, Network In, and Network Out.
+        """
+        logging.info("Start plot hardware usage - baseline of web service")
         cpu_data = []
         mem_data = []
-        network_data = []
+        network_in_data = []
+        network_out_data = []  # <-- Added list for Network Out data
+
         try:
             with open(result_file, "r", newline="") as file:
                 reader = csv.reader(file)
-                next(reader)
+                next(reader)  # Skip header row
                 for row in reader:
                     if row:
                         try:
                             cpu_data.append(float(row[1]))
                             mem_data.append(float(row[2]))
-                            network_data.append(float(row[3]))
-                        except (ValueError, IndexError):
+                            network_in_data.append(float(row[3]))
+                            # Read the 5th column (index 4) for Network Out
+                            network_out_data.append(float(row[4]))
+                        except (ValueError, IndexError) as e:
                             logging.warning(
-                                f"Warning: Skipping invalid row or value: {row}"
+                                f"Skipping invalid row or value: {row}. Error: {e}"
                             )
         except FileNotFoundError:
-            logging.error(f"Error: The file '{result_file}' was not found.")
+            logging.error(f"The file '{result_file}' was not found.")
             return
         except StopIteration:
-            # This happens if the CSV is empty or only has a header
             logging.error(
-                f"Error: The CSV file '{result_file}' is empty or contains only a header."
+                f"The CSV file '{result_file}' is empty or has only a header."
             )
             return
         except Exception as e:
-            logging.error(f"An error occurred: {e}")
+            logging.error(f"An unexpected error occurred: {e}")
             return
 
-        data = [cpu_data, mem_data, network_data]
-        data = [np.array(cpu_data), np.array(mem_data), np.array(network_data)]
-        labels = ["CPU (%)", "Memory (%)", "Network (MBps)"]
-        plt.title("Hardware usage for Web service", fontsize=16)
+        # Check if any data was actually loaded
+        if not all([cpu_data, mem_data, network_in_data, network_out_data]):
+            logging.error("One or more data series is empty. Cannot generate plot.")
+            return
 
-        fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 6))
+        # --- UPGRADED PLOTTING SECTION ---
+        # Change layout to a 2x2 grid for better readability
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
+        fig.suptitle(
+            f"Streaming Service Resource Usage",
+            fontsize=18,
+            fontweight="bold",
+        )
 
-        # Plot data on each subplot
-        axes[0].boxplot(data[0])
-        axes[0].set_title("CPU Usage Distribution")
-        axes[0].set_ylabel("Usage (%)")
-        axes[0].set_xticklabels(["CPU"])
-        # Add this line to set tighter Y-axis limits
-        # padding_cpu = (data[0].max() - data[0].min()) * 0.5  # 50% padding
-        # axes[0].set_ylim(data[0].min() - padding_cpu, data[0].max() + padding_cpu)
+        # Plot 1: CPU Usage (Top-Left)
+        axes[0, 0].boxplot(cpu_data)
+        axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
+        axes[0, 0].set_ylabel("Usage (%)")
+        axes[0, 0].set_xticklabels(["CPU"])
 
-        axes[1].boxplot(data[1])
-        axes[1].set_title("Memory Usage Distribution")
-        axes[1].set_ylabel("Usage (%)")
-        axes[1].set_xticklabels(["Memory"])
-        # Add this line to set tighter Y-axis limits
-        # padding_mem = (data[1].max() - data[1].min()) * 0.5  # 50% padding
-        # axes[1].set_ylim(data[1].min() - padding_mem, data[1].max() + padding_mem)
+        # Plot 2: Memory Usage (Top-Right)
+        axes[0, 1].boxplot(mem_data)
+        axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
+        axes[0, 1].set_ylabel("Usage (%)")
+        axes[0, 1].set_xticklabels(["Memory"])
 
-        axes[2].boxplot(data[2])
-        axes[2].set_title("Network Traffic Distribution")
-        axes[2].set_ylabel("Traffic (MBps)")
-        axes[2].set_xticklabels(["Network"])
-        # Add this line to set tighter Y-axis limits
-        # padding_net = (data[2].max() - data[2].min()) * 0.5  # 50% padding
-        # axes[2].set_ylim(data[2].min() - padding_net, data[2].max() + padding_net)
+        # Plot 3: Network In Traffic (Bottom-Left)
+        axes[1, 0].boxplot(network_in_data)
+        axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
+        axes[1, 0].set_ylabel("Traffic (MBps)")
+        axes[1, 0].set_xticklabels(["Network In"])
 
-        # Adjust layout to prevent titles and labels from overlapping
-        plt.tight_layout()
+        # Plot 4: Network Out Traffic (Bottom-Right) - NEW PLOT
+        axes[1, 1].boxplot(network_out_data)
+        axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
+        axes[1, 1].set_ylabel("Traffic (MBps)")
+        axes[1, 1].set_xticklabels(["Network Out"])
 
-        # Save the figure to a file
+        # Adjust layout and save the figure
+        plt.tight_layout(
+            rect=[0, 0.03, 1, 0.95]
+        )  # Adjust rect to make space for suptitle
         plt.savefig(output_file)
+        logging.info(f"Plot successfully saved to {output_file}")
 
     @staticmethod
     def plot_respt(result_file, output_file):
@@ -511,71 +531,85 @@ class PlotResult:
 
     @staticmethod
     def plot_hardware(result_file, output_file):
+        """
+        Reads hardware usage data from a CSV and generates a 2x2 boxplot grid
+        for CPU, Memory, Network In, and Network Out.
+        """
         logging.info("Start plot hardware usage of web service")
         cpu_data = []
         mem_data = []
-        network_data = []
+        network_in_data = []
+        network_out_data = []  # <-- Added list for Network Out data
+
         try:
             with open(result_file, "r", newline="") as file:
                 reader = csv.reader(file)
-                next(reader)
+                next(reader)  # Skip header row
                 for row in reader:
                     if row:
                         try:
                             cpu_data.append(float(row[1]))
                             mem_data.append(float(row[2]))
-                            network_data.append(float(row[3]))
-                        except (ValueError, IndexError):
+                            network_in_data.append(float(row[3]))
+                            # Read the 5th column (index 4) for Network Out
+                            network_out_data.append(float(row[4]))
+                        except (ValueError, IndexError) as e:
                             logging.warning(
-                                f"Warning: Skipping invalid row or value: {row}"
+                                f"Skipping invalid row or value: {row}. Error: {e}"
                             )
         except FileNotFoundError:
-            logging.error(f"Error: The file '{result_file}' was not found.")
+            logging.error(f"The file '{result_file}' was not found.")
             return
         except StopIteration:
-            # This happens if the CSV is empty or only has a header
             logging.error(
-                f"Error: The CSV file '{result_file}' is empty or contains only a header."
+                f"The CSV file '{result_file}' is empty or has only a header."
             )
             return
         except Exception as e:
-            logging.error(f"An error occurred: {e}")
+            logging.error(f"An unexpected error occurred: {e}")
             return
 
-        data = [cpu_data, mem_data, network_data]
-        data = [np.array(cpu_data), np.array(mem_data), np.array(network_data)]
-        labels = ["CPU (%)", "Memory (%)", "Network (MBps)"]
-        plt.title("Hardware usage for Web service", fontsize=16)
+        # Check if any data was actually loaded
+        if not all([cpu_data, mem_data, network_in_data, network_out_data]):
+            logging.error("One or more data series is empty. Cannot generate plot.")
+            return
 
-        fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(18, 6))
+        # --- UPGRADED PLOTTING SECTION ---
+        # Change layout to a 2x2 grid for better readability
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
+        fig.suptitle(
+            f"Streaming Service Resource Usage",
+            fontsize=18,
+            fontweight="bold",
+        )
 
-        # Plot data on each subplot
-        axes[0].boxplot(data[0])
-        axes[0].set_title("CPU Usage Distribution")
-        axes[0].set_ylabel("Usage (%)")
-        axes[0].set_xticklabels(["CPU"])
-        # Add this line to set tighter Y-axis limits
-        # padding_cpu = (data[0].max() - data[0].min()) * 0.5  # 50% padding
-        # axes[0].set_ylim(data[0].min() - padding_cpu, data[0].max() + padding_cpu)
+        # Plot 1: CPU Usage (Top-Left)
+        axes[0, 0].boxplot(cpu_data)
+        axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
+        axes[0, 0].set_ylabel("Usage (%)")
+        axes[0, 0].set_xticklabels(["CPU"])
 
-        axes[1].boxplot(data[1])
-        axes[1].set_title("Memory Usage Distribution")
-        axes[1].set_ylabel("Usage (%)")
-        axes[1].set_xticklabels(["Memory"])
-        # Add this line to set tighter Y-axis limits
-        # padding_mem = (data[1].max() - data[1].min()) * 0.5  # 50% padding
-        # axes[1].set_ylim(data[1].min() - padding_mem, data[1].max() + padding_mem)
+        # Plot 2: Memory Usage (Top-Right)
+        axes[0, 1].boxplot(mem_data)
+        axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
+        axes[0, 1].set_ylabel("Usage (%)")
+        axes[0, 1].set_xticklabels(["Memory"])
 
-        axes[2].boxplot(data[2])
-        axes[2].set_title("Network Traffic Distribution")
-        axes[2].set_ylabel("Traffic (MBps)")
-        axes[2].set_xticklabels(["Network"])
-        # Add this line to set tighter Y-axis limits
-        # padding_net = (data[2].max() - data[2].min()) * 0.5  # 50% padding
-        # axes[2].set_ylim(data[2].min() - padding_net, data[2].max() + padding_net)
+        # Plot 3: Network In Traffic (Bottom-Left)
+        axes[1, 0].boxplot(network_in_data)
+        axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
+        axes[1, 0].set_ylabel("Traffic (MBps)")
+        axes[1, 0].set_xticklabels(["Network In"])
 
-        # Adjust layout to prevent titles and labels from overlapping
-        plt.tight_layout()
+        # Plot 4: Network Out Traffic (Bottom-Right) - NEW PLOT
+        axes[1, 1].boxplot(network_out_data)
+        axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
+        axes[1, 1].set_ylabel("Traffic (MBps)")
+        axes[1, 1].set_xticklabels(["Network Out"])
 
-        # Save the figure to a file
+        # Adjust layout and save the figure
+        plt.tight_layout(
+            rect=[0, 0.03, 1, 0.95]
+        )  # Adjust rect to make space for suptitle
         plt.savefig(output_file)
+        logging.info(f"Plot successfully saved to {output_file}")

@@ -5,13 +5,13 @@ import time
 from threading import Thread
 import matplotlib.pyplot as plt
 import numpy as np
+import subprocess
 
 from src.lib import (
-    create_timeToFirstFrame_file,
     get_curl_metrics,
     query_url,
-    create_streaming_prom_file,
-    create_streaming_stats_file,
+    get_time_to_first_frame,
+    get_fps_bitrate,
     CreateResultFile,
     ClusterInfo,
 )
@@ -92,8 +92,313 @@ class StreamingMeasuring:
                         f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
                     )
 
-                    # 2. Create result file
+                    # 1. Create result file
                     result_file = CreateResultFile.streaming_timeToFirstFrame(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                    )
+
+                    # 2. Deploy ksvc for measuring
+                    K8sAPI.deploy_ksvc_streaming(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=100,
+                        min_scale=replica,
+                        max_scale=replica,
+                        streaming_info=self.cluster_info.streaming_info,
+                        cpu=resource["cpu"],
+                        memory=resource["memory"],
+                    )
+
+                    # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+                    time.sleep(self.cool_down_time)
+
+                    # 4. Execute ffmpeg command to receive video from source and get time to first frame
+                    for _ in range(self.curl_time):
+                        logging.info("Start catching streaming service")
+
+                        time_to_first_frame = get_time_to_first_frame(
+                            url=f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}"
+                        )
+
+                        if time_to_first_frame:
+                            with open(result_file, mode="a", newline="") as f:
+                                writer = csv.writer(f)
+                                writer.writerow([time_to_first_frame])
+                                logging.debug(
+                                    f"Successfully write {time_to_first_frame} into {result_file}"
+                                )
+
+                    PlotResult.timeToFirstFrame(
+                        result_file=result_file,
+                        output_file=f"result/2_1_timeToFirstFrame/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                    )
+
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(
+                        2  # Wait for API server to successfully receive delete signal
+                    )
+                    K8sAPI.kill_pod_proccess(
+                        namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
+                    )
+                    while True:
+                        pods = K8sAPI.get_pod_status_by_ksvc(
+                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        )
+                        logging.info(
+                            f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                        )
+                        time.sleep(2)
+                        if not pods:
+                            logging.info(
+                                f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                            )
+                            break
+
+                    time.sleep(self.cool_down_time)
+
+                    logging.info(
+                        "End collecting time to first frame when pod in warm status"
+                    )
+
+        logging.info(
+            "End Sceanario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
+        )
+
+    def get_fps(self):
+        logging.info(
+            "Sceanario: Measure fps of streaming service when pod in warm status"
+        )
+
+        for replica in self.replicas:
+            for rep in range(1, self.repetition + 1, 1):
+                logging.info(
+                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
+                )
+
+                # 1. Create result file
+                stream_stats_file = CreateResultFile.streaming_bitrate_fps(
+                    nodename=self.hostname,
+                    filename=f"{self.arch}__{var.generate_file_time}_rep{rep}.csv",
+                )
+
+                # 2. Deploy ksvc for measuring
+                K8sAPI.deploy_ksvc_streaming(
+                    ksvc_name=self.ksvc_name,
+                    namespace=self.namespace,
+                    image=self.image,
+                    port=self.port,
+                    hostname=self.hostname,
+                    window_time=100,
+                    min_scale=replica,
+                    max_scale=replica,
+                    streaming_info=self.cluster_info.streaming_info,
+                )
+
+                # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                while True:
+                    if K8sAPI.all_pods_ready(
+                        pods=K8sAPI.get_pod_status_by_ksvc(
+                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        )
+                    ):
+                        logging.info("All pods ready!")
+                        break
+                    logging.info("Waiting for pods to be ready ...")
+                    time.sleep(2)
+
+                time.sleep(self.cool_down_time)
+
+                # 4. Execute ffmpeg command to receive video from source and get fps
+                logging.info("Start catching fps/bitrate of streaming service")
+                stream_stats = get_fps_bitrate(
+                    stream_url=f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
+                    # duration=self.detection_time,
+                )
+
+                logging.info(stream_stats)
+
+                with open(stream_stats_file, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    # Use the generator to get live stats
+                    for stats in stream_stats:
+                        writer.writerow([stats])
+
+                logging.info(f"Successfully saved data to {stream_stats_file}")
+
+                PlotResult.bitrate_fps(
+                    result_file=stream_stats_file,
+                    output_file=f"result/2_2_bitrate_fps/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
+                )
+
+                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+
+                K8sAPI.kill_pod_proccess(
+                    namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
+                )
+                while True:
+                    pods = K8sAPI.get_pod_status_by_ksvc(
+                        namespace=self.namespace, ksvc_name=self.ksvc_name
+                    )
+                    logging.info(
+                        f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                    )
+                    time.sleep(2)
+                    if not pods:
+                        logging.info(
+                            f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                        )
+                        break
+
+                time.sleep(self.cool_down_time)
+
+                logging.info(
+                    "End collecting time to first frame when pod in warm status"
+                )
+
+    def get_hardware_resource(self):
+        logging.info(
+            "Sceanario: Measure hardware resource of streaming service when pod in warm status"
+        )
+
+        for replica in self.replicas:
+            for rep in range(1, self.repetition + 1, 1):
+                logging.info(
+                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
+                )
+
+                # 1. Create result file
+                stream_resource_file = CreateResultFile.streaming_resource(
+                    nodename=self.hostname,
+                    filename=f"{self.arch}__{var.generate_file_time}_rep{rep}.csv",
+                )
+
+                # 2. Deploy ksvc for measuring
+                K8sAPI.deploy_ksvc_streaming(
+                    ksvc_name=self.ksvc_name,
+                    namespace=self.namespace,
+                    image=self.image,
+                    port=self.port,
+                    hostname=self.hostname,
+                    window_time=100,
+                    min_scale=replica,
+                    max_scale=replica,
+                    streaming_info=self.cluster_info.streaming_info,
+                )
+
+                # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                while True:
+                    if K8sAPI.all_pods_ready(
+                        pods=K8sAPI.get_pod_status_by_ksvc(
+                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        )
+                    ):
+                        logging.info("All pods ready!")
+                        break
+                    logging.info("Waiting for pods to be ready ...")
+                    time.sleep(2)
+
+                time.sleep(self.cool_down_time)
+
+                # 4. Query prometheus to get hardware resources
+                # GetHardWareUsage.query_prometheus(
+                #     host_ip=self.host_ip,
+                #     detection_time=self.detection_time,
+                #     cluster_info=self.cluster_info,
+                #     result_file=stream_resource_file,
+                # )
+                # GetHardWareUsage.run_ffmpeg_for_duration(
+                #     url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/{self.cluster_info.streaming_info.streaming_uri}",
+                #     duration_sec=self.detection_time,
+                # )
+
+                thread1 = Thread(
+                    target=GetHardWareUsage.run_ffmpeg_for_duration,
+                    kwargs={
+                        "url": f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
+                        "duration_sec": self.detection_time,
+                    },
+                )
+
+                thread2 = Thread(
+                    target=GetHardWareUsage.query_prometheus,
+                    kwargs={
+                        "host_ip": self.host_ip,
+                        "detection_time": self.detection_time,
+                        "cluster_info": self.cluster_info,
+                        "result_file": stream_resource_file,
+                    },
+                )
+
+                thread1.start()
+                thread2.start()
+                thread1.join()
+                thread2.join()
+
+                logging.info(
+                    "End query prometheus to get hardware information when running streaming serviced"
+                )
+
+                PlotResult.resource(
+                    result_file=stream_resource_file,
+                    output_file=f"result/2_3_streaming_prom/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
+                )
+
+                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+
+                K8sAPI.kill_pod_proccess(
+                    namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
+                )
+                while True:
+                    pods = K8sAPI.get_pod_status_by_ksvc(
+                        namespace=self.namespace, ksvc_name=self.ksvc_name
+                    )
+                    logging.info(
+                        f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                    )
+                    time.sleep(2)
+                    if not pods:
+                        logging.info(
+                            f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                        )
+                        break
+
+                time.sleep(self.cool_down_time)
+
+                logging.info("End collecting resource usage when pod in warm status")
+
+    def measure(self):
+        logging.info(
+            "Sceanario: Measure fps, cpu_usage, mem_usage, network(in/out) of streaming service when pod in warm status"
+        )
+        # 1. Load config values
+
+        for replica in self.replicas:
+            for rep in range(1, self.repetition + 1, 1):
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
+                    )
+
+                    # 2. Create result file
+                    prom_file = CreateResultFile.streaming_resource(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
+                    )
+                    stream_stats_file = CreateResultFile.streaming_bitrate_fps(
                         nodename=self.hostname,
                         filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
                     )
@@ -124,222 +429,185 @@ class StreamingMeasuring:
                             break
                         logging.info("Waiting for pods to be ready ...")
                         time.sleep(2)
+
                     time.sleep(self.cool_down_time)
 
                     # 5. Executing curl save to data
-                    for _ in range(self.curl_time):
-                        start_time = time.time()
-                        # 5.1. Executing curl to get time to first frame
-                        # Curl to the url to trigger streaming service
-                        # Result of curl is:
-                        # [time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total]
-                        # We only focus on time_starttransfer which is time to first frame
-                        logging.info("Start trigger service")
-                        result = get_curl_metrics(
-                            url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/10"
-                        )
+                    start_time = time.time()
+                    # 5.1. Executing curl to get time to first frame
+                    # Curl to the url to trigger streaming service
+                    # Result of curl is:
+                    # [time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total]
+                    # We only focus on time_starttransfer which is time to first frame
+                    logging.info("Start trigger service")
+                    result = get_curl_metrics(
+                        url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/{self.detection_time}"
+                    )
 
-                        logging.debug(
-                            f"Curl: http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/10"
-                        )
-                        logging.debug(f"Trigger return {result}")
+                    logging.debug(
+                        f"Curl: http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/{self.detection_time}"
+                    )
+                    logging.debug(f"Trigger return {result}")
 
-                        with open(result_file, mode="a", newline="") as f:
-                            result_value = [
-                                result["time_namelookup"],
-                                result["time_connect"],
-                                result["time_appconnect"],
-                                result["time_pretransfer"],
-                                result["time_redirect"],
-                                result["time_starttransfer"],
-                                result["time_total"],
-                            ]
-                            writer = csv.writer(f)
-                            writer.writerow(result_value)
-                        logging.debug(
-                            f"Successfully write {result_value} into {result_file}"
-                        )
-                        while (time.time() - start_time) < 10:
-                            time.sleep(1)
+                    # 5.2. Now we will start 2 process
+                    # The first one is trigger prometheus server to query cpu, memory, and network
+                    # The second one is trigger service to get current bitrate and fps
+                    # 5.2.1. Get bit rate and fps
+                    thread1 = Thread(
+                        target=MainThread.get_bitrate_fps,
+                        kwargs={
+                            "detection_time": self.detection_time,
+                            "ksvc_name": self.ksvc_name,
+                            "namespace": self.namespace,
+                            "result_file": stream_stats_file,
+                        },
+                    )
+                    # 5.2.2. Trigger prometheus server
+                    thread2 = Thread(
+                        target=MainThread.query_prometheus,
+                        kwargs={
+                            "host_ip": self.host_ip,
+                            "detection_time": self.detection_time,
+                            "result_file": prom_file,
+                        },
+                    )
+                    thread1.start()
+                    thread2.start()
+                    thread1.join()
+                    thread2.join()
 
-                    PlotResult.timeToFirstFrame(
-                        result_file=result_file,
-                        output_file=f"result/2_1_timeToFirstFrame/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
+                    while (time.time() - start_time) < (self.detection_time):
+                        time.sleep(1)
+
+                    PlotResult.resource(
+                        result_file=prom_file,
+                        output_file=f"result/2_3_streaming_prom/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
+                        resolution=self.resolution,
+                    )
+                    PlotResult.bitrate_fps(
+                        result_file=stream_stats_file,
+                        output_file=f"result/2_2_bitrate_fps/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
                         resolution=self.resolution,
                     )
 
                     K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
 
-                    time.sleep(self.cool_down_time)
-
                     logging.info(
                         "End collecting time to first frame when pod in warm status"
                     )
 
-        logging.info(
-            "End sceanario: Response time of streaming service when pod in warm status"
-        )
 
-    def measure(self):
-        logging.info("Sceanario: Data of streaming service when pod in warm status")
-        # 1. Load config values
-
-        for replica in self.replicas:
-            for rep in range(1, self.repetition + 1, 1):
-                logging.info(
-                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
-                )
-
-                # 2. Create result file
-                prom_file = CreateResultFile.streaming_resource(
-                    nodename=self.hostname,
-                    filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
-                )
-                stream_stats_file = CreateResultFile.streaming_bitrate_fps(
-                    nodename=self.hostname,
-                    filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
-                )
-
-                # 3. Deploy ksvc for measuring
-                K8sAPI.deploy_ksvc(
-                    ksvc_name=self.ksvc_name,
-                    namespace=self.namespace,
-                    image=self.image,
-                    port=self.port,
-                    hostname=self.hostname,
-                    replicas=replica,
-                )
-
-                # 4. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                while True:
-                    if K8sAPI.all_pods_ready(
-                        pods=K8sAPI.get_pod_status_by_ksvc(
-                            namespace=self.namespace, ksvc_name=self.ksvc_name
-                        )
-                    ):
-                        logging.info("All pods ready!")
-                        break
-                    logging.info("Waiting for pods to be ready ...")
-                    time.sleep(2)
-
-                time.sleep(self.cool_down_time)
-
-                # 5. Executing curl save to data
-                start_time = time.time()
-                # 5.1. Executing curl to get time to first frame
-                # Curl to the url to trigger streaming service
-                # Result of curl is:
-                # [time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total]
-                # We only focus on time_starttransfer which is time to first frame
-                logging.info("Start trigger service")
-                result = get_curl_metrics(
-                    url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/{self.detection_time}"
-                )
-
-                logging.debug(
-                    f"Curl: http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/{self.detection_time}"
-                )
-                logging.debug(f"Trigger return {result}")
-
-                # 5.2. Now we will start 2 process
-                # The first one is trigger prometheus server to query cpu, memory, and network
-                # The second one is trigger service to get current bitrate and fps
-                # 5.2.1. Get bit rate and fps
-                thread1 = Thread(
-                    target=MainThread.get_bitrate_fps,
-                    kwargs={
-                        "detection_time": self.detection_time,
-                        "ksvc_name": self.ksvc_name,
-                        "namespace": self.namespace,
-                        "result_file": stream_stats_file,
-                    },
-                )
-                # 5.2.2. Trigger prometheus server
-                thread2 = Thread(
-                    target=MainThread.query_prometheus,
-                    kwargs={
-                        "host_ip": self.host_ip,
-                        "detection_time": self.detection_time,
-                        "result_file": prom_file,
-                    },
-                )
-                thread1.start()
-                thread2.start()
-                thread1.join()
-                thread2.join()
-
-                while (time.time() - start_time) < (self.detection_time):
-                    time.sleep(1)
-
-                PlotResult.resource(
-                    result_file=prom_file,
-                    output_file=f"result/2_3_streaming_prom/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
-                    resolution=self.resolution,
-                )
-                PlotResult.bitrate_fps(
-                    result_file=stream_stats_file,
-                    output_file=f"result/2_2_bitrate_fps/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
-                    resolution=self.resolution,
-                )
-
-                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-
-                logging.info(
-                    "End collecting time to first frame when pod in warm status"
-                )
-
-
-class MainThread:
+class GetHardWareUsage:
     @staticmethod
-    def query_prometheus(host_ip, detection_time, result_file):
+    def query_prometheus(host_ip, detection_time, cluster_info, result_file):
         logging.info(
             "Start query prometheus to get hardware information when running streaming service"
         )
 
         start_time = time.time()
+        if detection_time > 5:
+            time.sleep(5)
+
         while time.time() - start_time < detection_time:
             logging.info("Collecting prometheus metrics ...")
             cpu = Prometheus.queryCPU(instance=host_ip)
             mem = Prometheus.queryMem(instance=host_ip)
-            network = Prometheus.queryNetwork(instance=host_ip)
+            network_in = Prometheus.queryNetworkIn(
+                instance=host_ip, cluster_info=cluster_info
+            )
+            network_out = Prometheus.queryNetworkOut(
+                instance=host_ip, cluster_info=cluster_info
+            )
             with open(result_file, mode="a", newline="") as f:
                 result_value = [
                     cpu[0],
                     cpu[1],
                     mem[1],
-                    network[1],
+                    network_in[1],
+                    network_out[1],
                 ]
                 writer = csv.writer(f)
                 writer.writerow(result_value)
             logging.debug(f"Successfully write {result_value} into {result_file}")
             time.sleep(0.5)
-        logging.info(
-            "End query prometheus to get hardware information when running streaming serviced"
-        )
 
     @staticmethod
-    def get_bitrate_fps(detection_time, ksvc_name, namespace, result_file):
-        logging.info("Start collecting bitrate and fps of streaming service")
-        start_time = time.time()
-        while time.time() - start_time < detection_time:
-            logging.info("Collecting bitrate and fps ...")
-            result = query_url(
-                url=f"http://{ksvc_name}.{namespace}.192.168.17.1.sslip.io/stream/status"
-            )
-            if result["status"] == "running":
-                bitrate = result["details"]["bitrate"]
-                fps = result["details"]["fps"]
-                logging.debug(
-                    f"Stream running with a final bitrate of {bitrate} and {fps} FPS."
-                )
-                with open(result_file, mode="a", newline="") as f:
-                    result_value = [bitrate, fps]
-                    writer = csv.writer(f)
-                    writer.writerow(result_value)
-                logging.debug(f"successfully write {result_value} into {result_file}")
-            time.sleep(0.5)
+    def run_ffmpeg_for_duration(url: str, duration_sec: int):
+        """
+        Runs an ffmpeg command to process a stream for a specific duration.
 
-        logging.info("End collecting bitrate and fps of streaming service")
+        This function constructs and executes an ffmpeg command that reads from the
+        given URL, discards the output, and runs for a specified number of seconds.
+        It captures and logs the command's output (stdout and stderr).
+
+        Args:
+            url (str): The input URL for the ffmpeg command (e.g., a video stream).
+            duration_sec (int): The duration in seconds for which the command should run.
+
+        Returns:
+            bool: True if the command executed successfully, False otherwise.
+        """
+        if not isinstance(duration_sec, int) or duration_sec <= 0:
+            logging.error("Duration must be a positive integer.")
+            return False
+
+        # Construct the ffmpeg command.
+        # -i {url}: Specifies the input URL.
+        # -t {duration_sec}: Sets the duration for the process.
+        # -f null -: Instructs ffmpeg to discard all output, useful for testing or analysis.
+        command = [
+            "ffmpeg",
+            "-i",
+            url,
+            "-t",
+            str(duration_sec),
+            "-f",
+            "null",  # Discard the frame data
+            "-",
+        ]
+
+        logging.info("Executing command: %s", command)
+
+        try:
+            # Use shlex.split to handle shell-like quoting safely.
+
+            # Execute the command.
+            # capture_output=True captures stdout and stderr.
+            # text=True decodes them as text.
+            # check=True raises a CalledProcessError if the command returns a non-zero exit code.
+            result = subprocess.run(
+                command, check=True, capture_output=True, text=True, encoding="utf-8"
+            )
+
+            logging.info("--- FFmpeg Command Successful ---")
+            # FFmpeg often prints progress and info to stderr.
+            logging.debug(
+                "FFmpeg Output (stderr):\n%s",
+                result.stderr if result.stderr.strip() else "No standard error output.",
+            )
+            if result.stdout and result.stdout.strip():
+                logging.info("FFmpeg Output (stdout):\n%s", result.stdout)
+            return True
+
+        except FileNotFoundError:
+            logging.error(
+                "ffmpeg command not found. Please ensure FFmpeg is installed and accessible in your system's PATH."
+            )
+            return False
+        except subprocess.CalledProcessError as e:
+            logging.error(
+                "--- FFmpeg command failed with exit code %s ---", e.returncode
+            )
+            logging.error(
+                "FFmpeg Output (stderr):\n%s",
+                e.stderr if e.stderr.strip() else "No standard error output.",
+            )
+            if e.stdout and e.stdout.strip():
+                logging.error("FFmpeg Output (stdout):\n%s", e.stdout)
+            return False
+        except Exception:
+            logging.exception("An unexpected error occurred while running ffmpeg.")
+            return False
 
 
 class PlotResult:
@@ -415,7 +683,7 @@ class PlotResult:
         plt.savefig(output_file)
 
     @staticmethod
-    def timeToFirstFrame(result_file, output_file, resolution):
+    def timeToFirstFrame(result_file, output_file):
         logging.info("Start plot time to first frame of streaming service")
         resp_time = []
         try:
@@ -425,7 +693,7 @@ class PlotResult:
                 for row in reader:
                     if row:
                         try:
-                            resp_time.append(float(row[5]) * 1000)
+                            resp_time.append(float(row[0]) * 1000)
                         except (ValueError, IndexError):
                             logging.warning(
                                 f"Warning: Skipping invalid row or value: {row}"
@@ -453,7 +721,7 @@ class PlotResult:
         ax.boxplot(resp_time)
 
         plt.title(
-            f"Distribution of time to first frame of streaming service at resolution = {resolution}",
+            f"Distribution of time to first frame of streaming service",
             fontsize=16,
         )
         plt.ylabel("Time to first frame (ms)", fontsize=12)
@@ -469,7 +737,92 @@ class PlotResult:
             plt.close()  # Ensure the plot is closed to free memory
 
     @staticmethod
-    def resource(result_file, output_file, resolution):
+    def resource(result_file, output_file):
+        """
+        Reads hardware usage data from a CSV and generates a 2x2 boxplot grid
+        for CPU, Memory, Network In, and Network Out.
+        """
+        logging.info("Start plot hardware usage of streaming service")
+        cpu_data = []
+        mem_data = []
+        network_in_data = []
+        network_out_data = []  # <-- Added list for Network Out data
+
+        try:
+            with open(result_file, "r", newline="") as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header row
+                for row in reader:
+                    if row:
+                        try:
+                            cpu_data.append(float(row[1]))
+                            mem_data.append(float(row[2]))
+                            network_in_data.append(float(row[3]))
+                            # Read the 5th column (index 4) for Network Out
+                            network_out_data.append(float(row[4]))
+                        except (ValueError, IndexError) as e:
+                            logging.warning(
+                                f"Skipping invalid row or value: {row}. Error: {e}"
+                            )
+        except FileNotFoundError:
+            logging.error(f"The file '{result_file}' was not found.")
+            return
+        except StopIteration:
+            logging.error(
+                f"The CSV file '{result_file}' is empty or has only a header."
+            )
+            return
+        except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}")
+            return
+
+        # Check if any data was actually loaded
+        if not all([cpu_data, mem_data, network_in_data, network_out_data]):
+            logging.error("One or more data series is empty. Cannot generate plot.")
+            return
+
+        # --- UPGRADED PLOTTING SECTION ---
+        # Change layout to a 2x2 grid for better readability
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
+        fig.suptitle(
+            f"Streaming Service Resource Usage",
+            fontsize=18,
+            fontweight="bold",
+        )
+
+        # Plot 1: CPU Usage (Top-Left)
+        axes[0, 0].boxplot(cpu_data)
+        axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
+        axes[0, 0].set_ylabel("Usage (%)")
+        axes[0, 0].set_xticklabels(["CPU"])
+
+        # Plot 2: Memory Usage (Top-Right)
+        axes[0, 1].boxplot(mem_data)
+        axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
+        axes[0, 1].set_ylabel("Usage (%)")
+        axes[0, 1].set_xticklabels(["Memory"])
+
+        # Plot 3: Network In Traffic (Bottom-Left)
+        axes[1, 0].boxplot(network_in_data)
+        axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
+        axes[1, 0].set_ylabel("Traffic (MBps)")
+        axes[1, 0].set_xticklabels(["Network In"])
+
+        # Plot 4: Network Out Traffic (Bottom-Right) - NEW PLOT
+        axes[1, 1].boxplot(network_out_data)
+        axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
+        axes[1, 1].set_ylabel("Traffic (MBps)")
+        axes[1, 1].set_xticklabels(["Network Out"])
+
+        # Adjust layout and save the figure
+        plt.tight_layout(
+            rect=[0, 0.03, 1, 0.95]
+        )  # Adjust rect to make space for suptitle
+        plt.savefig(output_file)
+        logging.info(f"Plot successfully saved to {output_file}")
+
+    @staticmethod
+    def old_resource(result_file, output_file, resolution):
         logging.info("Start plot hardware usage of streaming service")
         cpu_data = []
         mem_data = []
@@ -543,9 +896,9 @@ class PlotResult:
         plt.savefig(output_file)
 
     @staticmethod
-    def bitrate_fps(result_file, output_file, resolution):
+    def bitrate_fps(result_file, output_file):
         logging.info("Start plot hardware usage of streaming service")
-        bitrate_data = []
+        # bitrate_data = []
         fps_data = []
         try:
             with open(result_file, "r", newline="") as file:
@@ -554,24 +907,7 @@ class PlotResult:
                 for row in reader:
                     if row:
                         try:
-                            bitrate_str = row[0]
-                            if "kbits/s" in bitrate_str:
-                                # It's kbit/s, so just remove the text and convert to float
-                                value = float(bitrate_str.replace("kbits/s", ""))
-                                bitrate_data.append(value)
-                                fps_data.append(float(row[1]))
-
-                            # elif "mbits/s" in bitrate_str:
-                            #     # It's mbit/s, so remove text, convert, and multiply by 1000
-                            #     value = float(bitrate_str.replace("Mbits/s", "")) * 1000
-                            #     bitrate_data.append(value)
-                            #     fps_data.append(float(row[1]))
-
-                            else:
-                                # Optional: Handle rows with unexpected units
-                                logging.warning(
-                                    f"Skipping row with unknown bitrate unit: {row}"
-                                )
+                            fps_data.append(float(row[0]))
                         except (ValueError, IndexError):
                             logging.warning(
                                 f"Warning: Skipping invalid row or value: {row}"
@@ -589,28 +925,25 @@ class PlotResult:
             logging.error(f"An error occurred: {e}")
             return
 
-        data = [bitrate_data, fps_data]
-        data = [np.array(bitrate_data), np.array(fps_data)]
+        data = [fps_data]
+        data = [np.array(fps_data)]
 
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(18, 6))
+        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
         fig.suptitle(
-            f"Streaming service at resolution = {resolution}",
+            f"Streaming service",
             fontsize=16,
         )
 
         # Plot data on each subplot
-        axes[0].boxplot(data[0])
-        axes[0].set_title("Birate Distribution")
-        axes[0].set_ylabel("Usage (kbps)")
-        axes[0].set_xticklabels(["Bitrate"])
+
         # Add this line to set tighter Y-axis limits
         # padding_cpu = (data[0].max() - data[0].min()) * 0.5  # 50% padding
         # axes[0].set_ylim(data[0].min() - padding_cpu, data[0].max() + padding_cpu)
 
-        axes[1].boxplot(data[1])
-        axes[1].set_title("FPS Distribution")
-        axes[1].set_ylabel("frame per second")
-        axes[1].set_xticklabels(["FPS"])
+        axes.boxplot(data[0])
+        axes.set_title("FPS Distribution")
+        axes.set_ylabel("frame per second")
+        axes.set_xticklabels(["FPS"])
         # Add this line to set tighter Y-axis limits
         # padding_mem = (data[1].max() - data[1].min()) * 0.5  # 50% padding
         # axes[1].set_ylim(data[1].min() - padding_mem, data[1].max() + padding_mem)

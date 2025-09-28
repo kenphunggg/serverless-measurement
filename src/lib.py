@@ -1,9 +1,10 @@
 import logging
+import re
 import subprocess
 import sys
 import os
 import requests
-from typing import List
+from typing import List, Optional, Dict, Iterator
 
 import time
 
@@ -26,8 +27,10 @@ class DatabaseInfo:
 
 
 class StreamingInfo:
-    def __init__(self, streaming_source):
+    def __init__(self, streaming_source, streaming_uri):
         self.streaming_source = streaming_source
+        self.streaming_uri = streaming_uri
+
 
 class ClusterInfo:
     def __init__(
@@ -35,7 +38,7 @@ class ClusterInfo:
         master_node: Node,
         worker_nodes: List[Node] = None,
         database_info: DatabaseInfo = None,
-        streaming_info: StreamingInfo = None
+        streaming_info: StreamingInfo = None,
     ):
         self.master_node = master_node
         self.worker_nodes = worker_nodes if worker_nodes is not None else []
@@ -137,7 +140,7 @@ class CreateResultFile:
             test_case="2_1_timeToFirstFrame",
             nodename=nodename,
             filename=filename,
-            header="time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total\n",
+            header="time_to_first_frame\n",
         )
 
     @staticmethod
@@ -146,7 +149,7 @@ class CreateResultFile:
             test_case="2_2_bitrate_fps",
             nodename=nodename,
             filename=filename,
-            header="bitrate,fps\n",
+            header="fps\n",
         )
 
     @staticmethod
@@ -155,11 +158,11 @@ class CreateResultFile:
             test_case="2_3_streaming_prom",
             nodename=nodename,
             filename=filename,
-            header="timestamp,cpu_usage(%),mem_usage(%),network(MBps)\n",
+            header="timestamp,cpu_usage(%),mem_usage(%),network_in(MBps), network_out(MBps)\n",
         )
 
 
-def get_curl_metrics(url: str) -> dict:
+def get_curl_metrics(url: str) -> dict | None:
     """
     Executes a curl command and returns the timing metrics as a dictionary.
 
@@ -200,62 +203,185 @@ def get_curl_metrics(url: str) -> dict:
         logging.error(
             "Error: 'curl' command not found. Please ensure it is installed and in your PATH."
         )
-        sys.exit(1)
+        return None
     except subprocess.CalledProcessError as e:
         logging.error(f"Error executing curl command for {url}: {e.stderr}")
-        sys.exit(1)
+        return None
     except (ValueError, IndexError) as e:
         logging.error(f"Error parsing curl output: {e}")
-        sys.exit(1)
-        
-def get_time_to_first_frame(url: str) -> dict:
+        return None
+
+
+def get_time_to_first_frame(url: str) -> float | None:
     """
-    Executes a curl command and returns the timing metrics as a dictionary.
+    Measures the time it takes for ffmpeg to connect to a stream
+    and decode the first frame.
 
     Args:
-        url: The URL to test.
+        url: The URL of the video stream to test.
 
     Returns:
-        A dictionary containing the timing metrics as floats.
+        The time to the first frame in seconds (float),
+        or None if an error occurred.
     """
-    # A machine-readable format: key:%{variable}\n
-    # This makes parsing the output trivial.
-    curl_format = """
-    time_namelookup:%{time_namelookup}
-    time_connect:%{time_connect}
-    time_appconnect:%{time_appconnect}
-    time_pretransfer:%{time_pretransfer}
-    time_redirect:%{time_redirect}
-    time_starttransfer:%{time_starttransfer}
-    time_total:%{time_total}
-    """
-    command = ["curl", "-s", "-o", "/dev/null", "-w", curl_format, url]
+    command = [
+        "ffmpeg",
+        "-i",
+        url,
+        "-vframes",
+        "1",  # Exit after processing the first frame
+        "-f",
+        "null",  # Discard the frame data
+        "-",
+    ]
 
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        start_time = time.monotonic()
 
-        # Parse the output into a dictionary
-        metrics_dict = {}
-        output_lines = result.stdout.strip().splitlines()
-        for line in output_lines:
-            key, value = line.split(":", 1)
-            # Convert the value to a float
-            metrics_dict[key.strip()] = float(value)
+        subprocess.run(
+            command,
+            capture_output=True,  # Captures stdout and stderr
+            text=True,  # Decodes output as text
+            check=True,  # Raises an error if ffmpeg fails
+        )
 
-        logging.info("Collecting metrics successfully!")
-        return metrics_dict
+        end_time = time.monotonic()
+        duration = end_time - start_time
+
+        logging.info(
+            f"Successfully processed first frame from '{url}' in {duration:.4f} seconds."
+        )
+        return duration
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"ffmpeg failed for URL: {url}")
+        logging.error(f"FFmpeg STDERR:\n{e.stderr}")
+        return None
+    except subprocess.TimeoutExpired as e:
+        logging.error(f"ffmpeg timed out for URL: {url}")
+        return None
+    except FileNotFoundError:
+        logging.error(
+            "ffmpeg command not found. Is it installed and in your system's PATH?"
+        )
+        return None
+
+
+def get_fps_bitrate(stream_url, num_samples=100):
+    """
+    Analyzes a stream URL with FFmpeg and captures FPS samples from its output.
+
+    This function builds the FFmpeg command internally and includes timeouts
+    to handle slow-starting or stalling streams.
+
+    Args:
+        stream_url (str): The URL of the video stream to analyze.
+        num_samples (int): The number of FPS samples to collect.
+
+    Returns:
+        list: A list of floats containing the captured FPS values. Returns an empty
+              list if the process fails or times out before capturing any data.
+    """
+    # Construct the full FFmpeg command from the URL
+    STARTUP_TIMEOUT_SECONDS = 30.0
+    INACTIVITY_TIMEOUT_SECONDS = 15.0
+    command = [
+        "ffmpeg",
+        # Suppress verbose logs but keep the one-line progress stats
+        "-loglevel",
+        "error",
+        "-stats",
+        "-i",
+        stream_url,
+        "-f",
+        "null",  # Don't encode or save any output file
+        "-",  # Pipe to stdout (though we discard it)
+    ]
+
+    logging.info(f"🚀 Analyzing stream to capture {num_samples} FPS samples...")
+    logging.info(f"   URL: {stream_url}")
+    logging.info(
+        f"   (Startup timeout: {STARTUP_TIMEOUT_SECONDS}s, Inactivity timeout: {INACTIVITY_TIMEOUT_SECONDS}s)"
+    )
+
+    fps_pattern = re.compile(r"fps=\s*([\d.]+)")
+    fps_samples = []
+
+    try:
+        # Start the FFmpeg process with the constructed command
+        process = subprocess.Popen(
+            command,
+            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        start_time = time.time()
+        last_output_time = start_time
+
+        while len(fps_samples) < num_samples:
+            if process.poll() is not None:
+                logging.warning("⚠️ FFmpeg process terminated unexpectedly.")
+                break
+
+            current_time = time.time()
+            if not fps_samples and (
+                current_time - start_time > STARTUP_TIMEOUT_SECONDS
+            ):
+                logging.error(
+                    f"Timeout: No FPS data received within the {STARTUP_TIMEOUT_SECONDS}s startup period. Stopping."
+                )
+                break
+            if fps_samples and (
+                current_time - last_output_time > INACTIVITY_TIMEOUT_SECONDS
+            ):
+                logging.warning(
+                    f"Timeout: Stream inactive for over {INACTIVITY_TIMEOUT_SECONDS}s. Stopping."
+                )
+                break
+
+            line = process.stderr.readline()
+
+            if line:
+                last_output_time = time.time()
+
+                match = fps_pattern.search(line.strip())
+                if match:
+                    try:
+                        fps_value = float(match.group(1))
+                        fps_samples.append(fps_value)
+                        progress_msg = f"  -> Captured sample {len(fps_samples)}/{num_samples}: {fps_value:.2f} fps"
+                        sys.stdout.write(f"\r{progress_msg:<80}")
+                        sys.stdout.flush()
+                    except (ValueError, IndexError):
+                        continue
+            else:
+                break
+
+        print()
+        logging.info("✅ Sample collection finished or was interrupted.")
 
     except FileNotFoundError:
         logging.error(
-            "Error: 'curl' command not found. Please ensure it is installed and in your PATH."
+            "Error: 'ffmpeg' command not found. Make sure FFmpeg is installed and in your PATH."
         )
-        sys.exit(1)
-    except subprocess.CalledProcessError as e:
-        logging.error(f"Error executing curl command for {url}: {e.stderr}")
-        sys.exit(1)
-    except (ValueError, IndexError) as e:
-        logging.error(f"Error parsing curl output: {e}")
-        sys.exit(1)
+        return []
+    except Exception as e:
+        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
+        return []
+
+    finally:
+        if "process" in locals() and process.poll() is None:
+            logging.info("🔪 Terminating FFmpeg process...")
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logging.warning("FFmpeg did not terminate gracefully, killing it.")
+                process.kill()
+
+    return fps_samples
 
 
 def query_url(url: str) -> dict | None:

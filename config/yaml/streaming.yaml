@@ -8,7 +8,7 @@ spec:
     metadata:
       annotations:
         autoscaling.knative.dev/window: 100s
-        autoscaling.knative.dev/min-scale: '1'
+        autoscaling.knative.dev/min-scale: '0'
         autoscaling.knative.dev/max-scale: '1'
     spec:
       containers:

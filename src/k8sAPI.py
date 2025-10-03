@@ -333,11 +333,18 @@ class K8sAPI:
 
             # Print the status for each found pod
             for pod in pod_list.items:
-                logging.debug(
-                    f"Pods Found: Pod: {pod.metadata.name} | Status: {pod.status.phase}"
-                )
-                pod_info = {"name": pod.metadata.name, "status": pod.status.phase}
-                result.append(pod_info)
+                   # Determine the status just like kubectl does
+                    pod_status = ""
+                    if pod.metadata.deletion_timestamp:
+                        pod_status = "Terminating"
+                    else:
+                        pod_status = pod.status.phase
+
+                    logging.debug(
+                        f"Pods Found: Pod: {pod.metadata.name} | Status: {pod_status}"
+                    )
+                    pod_info = {"name": pod.metadata.name, "status": pod_status}
+                    result.append(pod_info)
 
         except config.ConfigException:
             logging.error(

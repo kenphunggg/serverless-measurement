@@ -6,7 +6,7 @@ from typing import List
 
 from src.main_tasks.web_measuring import WebMeasuring
 from src.main_tasks.streaming import StreamingMeasuring
-from src.lib import ClusterInfo, Node, DatabaseInfo, StreamingInfo
+from src.lib import ClusterInfo, Node, DatabaseInfo, StreamingInfo, PrometheusServer
 from src import variables as var
 
 
@@ -62,11 +62,19 @@ if __name__ == "__main__":
         streaming_uri=streaming_info_json["stream_uri"],
     )
 
+    prom_server_json = data["prometheus"]
+    prom_server = PrometheusServer(
+        ip=prom_server_json["server_ip"],
+        port=prom_server_json["port"],
+        interface=prom_server_json["interface"],
+    )
+
     my_cluster = ClusterInfo(
         master_node=master_node,
         worker_nodes=worker_nodes,
         database_info=database_info,
         streaming_info=streaming_info,
+        prom_server=prom_server,
     )
 
     logging.info(my_cluster)
@@ -91,6 +99,7 @@ if __name__ == "__main__":
             # streaming_measuring.get_warm_timeToFirstFrame()
             # streaming_measuring.get_fps()
             # streaming_measuring.get_hardware_resource()
+            streaming_measuring.get_cold_timeToFirstFrame()
             del streaming_measuring
 
         elif test_case["test_case"] == "":

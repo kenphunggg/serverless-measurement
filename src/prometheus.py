@@ -11,14 +11,13 @@ with open("config/config.json", "r") as f:
 PROMETHEUS = data["prometheus"]
 SERVER = PROMETHEUS["server_ip"]
 PORT = PROMETHEUS["port"]
-INTERFACE = PROMETHEUS["interface"]
 PROM_URL = f"http://{SERVER}:{PORT}"
 
 
 class Prometheus:
     @staticmethod
-    def query(query: str):
-        prom_client = PrometheusConnect(url=PROM_URL, disable_ssl=True)
+    def query(query: str, prom_server: str = PROM_URL):
+        prom_client = PrometheusConnect(url=prom_server, disable_ssl=True)
 
         # query = (
         #     f"100 - (avg by (instance, job)("
@@ -48,7 +47,7 @@ class Prometheus:
             return [-1, -1]
 
     @staticmethod
-    def queryCPU(instance: str):
+    def queryCPU(instance: str, prom_server: str = PROM_URL):
         """
         query cpu usage in (%)
         Args:
@@ -62,9 +61,9 @@ class Prometheus:
             f"irate(node_cpu_seconds_total{{mode='idle', instance='{instance}:9100'}}[1m])"
             f") * 100)"
         )
-        return Prometheus.query(query=query_cpu_url)
+        return Prometheus.query(query=query_cpu_url, prom_server=prom_server)
 
-    def queryGPU(instance: str):
+    def queryGPU(instance: str, prom_server: str = PROM_URL):
         """
         query gpu usage
         Args:
@@ -74,9 +73,9 @@ class Prometheus:
             list: [timestamp, value]
         """
         query_gpu_url = ()
-        return Prometheus.query(query=query_gpu_url)
+        return Prometheus.query(query=query_gpu_url, prom_server=prom_server)
 
-    def queryMem(instance: str):
+    def queryMem(instance: str, prom_server: str = PROM_URL):
         """
         query mem usage in (%)
         Args:
@@ -91,9 +90,11 @@ class Prometheus:
             f" / node_memory_MemTotal_bytes{{job='node_exporters', instance='{instance}:9100'}})"
             f" * 100"
         )
-        return Prometheus.query(query=query_mem_url)
+        return Prometheus.query(query=query_mem_url, prom_server=prom_server)
 
-    def queryNetworkIn(instance: str, cluster_info: ClusterInfo):
+    def queryNetworkIn(
+        instance: str, cluster_info: ClusterInfo, prom_server: str = PROM_URL
+    ):
         """
         query mem usage in (%)
         Args:
@@ -112,9 +113,11 @@ class Prometheus:
             f"rate(node_network_receive_bytes_total{{device='{interface}', instance='{instance}:9100', job='node_exporters'}}[1m])"
             f" / (1024 * 1024)"
         )
-        return Prometheus.query(query=query_network_receive)
+        return Prometheus.query(query=query_network_receive, prom_server=prom_server)
 
-    def queryNetworkOut(instance: str, cluster_info: ClusterInfo):
+    def queryNetworkOut(
+        instance: str, cluster_info: ClusterInfo, prom_server: str = PROM_URL
+    ):
         """
         query mem usage in (%)
         Args:
@@ -133,4 +136,4 @@ class Prometheus:
             f"rate(node_network_transmit_bytes_total{{device='{interface}', instance='{instance}:9100', job='node_exporters'}}[1m])"
             f" / (1024 * 1024)"
         )
-        return Prometheus.query(query=query_network_receive)
+        return Prometheus.query(query=query_network_receive, prom_server=prom_server)

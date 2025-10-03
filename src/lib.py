@@ -32,6 +32,13 @@ class StreamingInfo:
         self.streaming_uri = streaming_uri
 
 
+class PrometheusServer:
+    def __init__(self, ip, port, interface):
+        self.ip = ip
+        self.port = port
+        self.interface = interface
+
+
 class ClusterInfo:
     def __init__(
         self,
@@ -39,11 +46,14 @@ class ClusterInfo:
         worker_nodes: List[Node] = None,
         database_info: DatabaseInfo = None,
         streaming_info: StreamingInfo = None,
+        prom_server: PrometheusServer = None,
     ):
         self.master_node = master_node
         self.worker_nodes = worker_nodes if worker_nodes is not None else []
         self.database_info: DatabaseInfo = database_info
         self.streaming_info: StreamingInfo = streaming_info
+        self.prom_server: PrometheusServer = prom_server
+        self.prometheus_ip = f"http://{self.prom_server.ip}:{self.prom_server.port}"
 
     def add_worker(self, worker_node: Node):
         self.worker_nodes.append(worker_node)
@@ -161,6 +171,15 @@ class CreateResultFile:
             header="timestamp,cpu_usage(%),mem_usage(%),network_in(MBps), network_out(MBps)\n",
         )
 
+    @staticmethod
+    def streaming_timeToFirstFrame_cold(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="2_4_timeToFirstFrame_cold",
+            nodename=nodename,
+            filename=filename,
+            header="time_to_first_frame\n",
+        )
+
 
 def get_curl_metrics(url: str) -> dict | None:
     """
@@ -212,7 +231,7 @@ def get_curl_metrics(url: str) -> dict | None:
         return None
 
 
-def get_time_to_first_frame(url: str) -> float | None:
+def old_get_time_to_first_frame(url: str) -> float | None:
     """
     Measures the time it takes for ffmpeg to connect to a stream
     and decode the first frame.
@@ -258,6 +277,89 @@ def get_time_to_first_frame(url: str) -> float | None:
         logging.error(f"FFmpeg STDERR:\n{e.stderr}")
         return None
     except subprocess.TimeoutExpired as e:
+        logging.error(f"ffmpeg timed out for URL: {url}")
+        return None
+    except FileNotFoundError:
+        logging.error(
+            "ffmpeg command not found. Is it installed and in your system's PATH?"
+        )
+        return None
+
+
+def get_time_to_first_frame(url: str, wait_timeout: float = 30.0) -> float | None:
+    """
+    Waits for a stream to become available (HTTP 200) and then
+    measures the time it takes for ffmpeg to connect and decode the first frame.
+
+    Args:
+        url: The URL of the video stream to test.
+        wait_timeout: The maximum time in seconds to wait for the stream
+                      to become available before giving up.
+
+    Returns:
+        The time to the first frame in seconds (float),
+        or None if an error occurred or the wait timed out.
+    """
+    # --- Part 1: Wait for the stream to be ready ---
+    # This loop replicates: `while [ $(curl...) -ne 200 ]; do sleep 0.1; done`
+    wait_start_time = time.monotonic()
+    logging.info(f"Waiting for stream to be ready at {url}...")
+    while True:
+        # Check if we've waited too long
+        if time.monotonic() - wait_start_time > wait_timeout:
+            logging.error(
+                f"Timeout: Waited longer than {wait_timeout}s for URL to be ready."
+            )
+            return None
+        try:
+            # Use a HEAD request for efficiency, just like `curl --head`
+            response = requests.head(url, timeout=2)
+            if response.status_code == 200:
+                logging.info(f"Stream is ready (HTTP 200 OK). Proceeding with ffmpeg.")
+                break  # Exit the loop and continue to ffmpeg
+        except requests.RequestException:
+            # Ignore connection errors and just retry
+            pass
+
+        time.sleep(2)
+
+    # --- Part 2: Time the ffmpeg process ---
+    # This is the `&& time ffmpeg ...` part
+    command = [
+        "ffmpeg",
+        "-i",
+        url,
+        "-vframes",
+        "1",  # Exit after processing the first frame
+        "-f",
+        "null",  # Discard the frame data
+        "-",
+    ]
+
+    try:
+        start_time = time.monotonic()
+
+        subprocess.run(
+            command,
+            capture_output=True,  # Captures stdout and stderr
+            text=True,  # Decodes output as text
+            check=True,  # Raises an error if ffmpeg fails
+            timeout=30,  # Add a timeout for the ffmpeg process itself
+        )
+
+        end_time = time.monotonic()
+        duration = end_time - start_time
+
+        logging.info(
+            f"Successfully processed first frame from '{url}' in {duration:.4f} seconds."
+        )
+        return duration
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"ffmpeg failed for URL: {url}")
+        logging.error(f"FFmpeg STDERR:\n{e.stderr}")
+        return None
+    except subprocess.TimeoutExpired:
         logging.error(f"ffmpeg timed out for URL: {url}")
         return None
     except FileNotFoundError:

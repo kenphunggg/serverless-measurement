@@ -81,7 +81,7 @@ class K8sAPI:
 
         if cpu != 0 and memory != 0:
             resource_settings = {
-                "requests": {
+                "limits": {
                     "cpu": cpu,
                     "memory": memory,
                 },
@@ -183,9 +183,9 @@ class K8sAPI:
 
         if cpu != 0 and memory != 0:
             resource_settings = {
-                "requests": {
+                "limits": {
                     "cpu": cpu,
-                    "memory": memory,
+                    # "memory": memory,
                 },
             }
 

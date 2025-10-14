@@ -12,7 +12,7 @@
             "port": 8080,
             "namespace": "serverless",
             "hostname": "edge-node",
-            "host_ip": "192.168.17.163",
+            "host_ip": "192.168.17.131",
             "cool_down_time": 30,
             "curl_time": 2,
             "detection_time": 30,
@@ -23,42 +23,42 @@
                 },
                 {
                     "cpu": "100m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 }
             ]
         }
     ],
     "prometheus": {
-        "server_ip": "192.168.17.161",
+        "server_ip": "192.168.17.129",
         "port": 9090,
         "interface": "ens33"
     },
     "cluster_info": {
         "master-node": {
             "hostname": "master-node",
-            "host_ip": "192.168.17.161",
+            "host_ip": "192.168.17.129",
             "interface": "ens33"
         },
         "worker-nodes": [
             {
                 "hostname": "cloud-node",
-                "host_ip": "192.168.17.162",
+                "host_ip": "192.168.17.130",
                 "interface": "ens33"
             },
             {
                 "hostname": "edge-node",
-                "host_ip": "192.168.17.163",
+                "host_ip": "192.168.17.131",
                 "interface": "ens33"
             }
         ]
     },
     "streaming_info": {
-        "source_ip": "192.168.17.162:2000",
+        "source_ip": "192.168.17.130:2000",
         "stream_uri": "live/playlist.m3u8"
     },
     "database_info": {
-        "db_host": "192.168.17.162",
+        "db_host": "192.168.17.130",
         "db_user": "thai",
-        "db_password": "1"
+        "db_password": "pass"
     }
 }

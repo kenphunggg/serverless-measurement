@@ -28,6 +28,9 @@ result/2_2_bitrate_fps/*
 result/2_3_streaming_prom/*
 !result/2_3_streaming_prom/.gitkeep
 
+result/2_4_timeToFirstFrame_cold/*
+!result/2_4_timeToFirstFrame_cold/.gitkeep
+
 # Ignore python repos
 __pycache__/
 

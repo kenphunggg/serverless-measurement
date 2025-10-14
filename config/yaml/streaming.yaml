@@ -2,13 +2,13 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: measure-streaming
-  namespace: default
+  namespace: serverless
 spec:
   template:
     metadata:
       annotations:
         autoscaling.knative.dev/window: 100s
-        autoscaling.knative.dev/min-scale: '0'
+        autoscaling.knative.dev/min-scale: '1'
         autoscaling.knative.dev/max-scale: '1'
     spec:
       containers:
@@ -17,6 +17,9 @@ spec:
         - containerPort: 8080
         env:
         - name: SOURCE_IP
-          value: "192.168.17.162:2000"
+          value: "192.168.17.130:2000"
+        resources:
+          limits:
+            cpu: "100m"    
       nodeSelector:
         kubernetes.io/hostname: cloud-node

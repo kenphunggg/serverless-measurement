@@ -286,7 +286,7 @@ def old_get_time_to_first_frame(url: str) -> float | None:
         return None
 
 
-def get_time_to_first_frame(url: str, wait_timeout: float = 30.0) -> float | None:
+def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | None:
     """
     Waits for a stream to become available (HTTP 200) and then
     measures the time it takes for ffmpeg to connect and decode the first frame.

@@ -202,7 +202,16 @@ def get_curl_metrics(url: str) -> dict | None:
     time_starttransfer:%{time_starttransfer}
     time_total:%{time_total}
     """
-    command = ["curl", "-s", "-o", "/dev/null", "-w", curl_format, url]
+    # Set a 10-minute (600 seconds) timeout for the entire operation
+    timeout_seconds = "600"
+    command = [
+        "curl",
+        "--max-time", timeout_seconds,
+        "-s",
+        "-o", "/dev/null",
+        "-w", curl_format,
+        url
+    ]
 
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True)
@@ -230,60 +239,6 @@ def get_curl_metrics(url: str) -> dict | None:
         logging.error(f"Error parsing curl output: {e}")
         return None
 
-
-def old_get_time_to_first_frame(url: str) -> float | None:
-    """
-    Measures the time it takes for ffmpeg to connect to a stream
-    and decode the first frame.
-
-    Args:
-        url: The URL of the video stream to test.
-
-    Returns:
-        The time to the first frame in seconds (float),
-        or None if an error occurred.
-    """
-    command = [
-        "ffmpeg",
-        "-i",
-        url,
-        "-vframes",
-        "1",  # Exit after processing the first frame
-        "-f",
-        "null",  # Discard the frame data
-        "-",
-    ]
-
-    try:
-        start_time = time.monotonic()
-
-        subprocess.run(
-            command,
-            capture_output=True,  # Captures stdout and stderr
-            text=True,  # Decodes output as text
-            check=True,  # Raises an error if ffmpeg fails
-        )
-
-        end_time = time.monotonic()
-        duration = end_time - start_time
-
-        logging.info(
-            f"Successfully processed first frame from '{url}' in {duration:.4f} seconds."
-        )
-        return duration
-
-    except subprocess.CalledProcessError as e:
-        logging.error(f"ffmpeg failed for URL: {url}")
-        logging.error(f"FFmpeg STDERR:\n{e.stderr}")
-        return None
-    except subprocess.TimeoutExpired as e:
-        logging.error(f"ffmpeg timed out for URL: {url}")
-        return None
-    except FileNotFoundError:
-        logging.error(
-            "ffmpeg command not found. Is it installed and in your system's PATH?"
-        )
-        return None
 
 
 def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | None:

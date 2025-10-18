@@ -1,11 +1,11 @@
+import logging
+import re
+import time
+from typing import List
+
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
 from kubernetes.stream import stream
-
-import logging
-import time
-import re
-from typing import List
 
 from src.lib import DatabaseInfo, StreamingInfo
 
@@ -185,7 +185,7 @@ class K8sAPI:
             resource_settings = {
                 "limits": {
                     "cpu": cpu,
-                    # "memory": memory,
+                    "memory": memory,
                 },
             }
 
@@ -228,7 +228,6 @@ class K8sAPI:
     def exec_cmd_pod(
         command: List[str], namespace: str, podname: str, container_name: str
     ):
-
         config.load_kube_config()
         core_v1 = client.CoreV1Api()
 
@@ -258,7 +257,7 @@ class K8sAPI:
             return e.body
 
     @staticmethod
-    def kill_pod_proccess(
+    def kill_pod_process(
         namespace: str, ksvc: str, keyword: str, container_name: str = "user-container"
     ):
         pod_names = K8sAPI.get_pods(namespace=namespace, ksvc=ksvc)
@@ -333,18 +332,18 @@ class K8sAPI:
 
             # Print the status for each found pod
             for pod in pod_list.items:
-                   # Determine the status just like kubectl does
-                    pod_status = ""
-                    if pod.metadata.deletion_timestamp:
-                        pod_status = "Terminating"
-                    else:
-                        pod_status = pod.status.phase
+                # Determine the status just like kubectl does
+                pod_status = ""
+                if pod.metadata.deletion_timestamp:
+                    pod_status = "Terminating"
+                else:
+                    pod_status = pod.status.phase
 
-                    logging.debug(
-                        f"Pods Found: Pod: {pod.metadata.name} | Status: {pod_status}"
-                    )
-                    pod_info = {"name": pod.metadata.name, "status": pod_status}
-                    result.append(pod_info)
+                logging.debug(
+                    f"Pods Found: Pod: {pod.metadata.name} | Status: {pod_status}"
+                )
+                pod_info = {"name": pod.metadata.name, "status": pod_status}
+                result.append(pod_info)
 
         except config.ConfigException:
             logging.error(
@@ -538,7 +537,7 @@ class K8sAPI:
                     )
                 elif e.status == 403:
                     logging.error(
-                        f"Check if the service account has 'pods/log' permissions."
+                        "Check if the service account has 'pods/log' permissions."
                     )
                 # return []
             except Exception as e:

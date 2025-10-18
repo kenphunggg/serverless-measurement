@@ -1,23 +1,21 @@
-import logging
-
 import csv
+import logging
+import subprocess
 import time
 from threading import Thread
+
 import matplotlib.pyplot as plt
 import numpy as np
-import subprocess
 
-from src.lib import (
-    get_curl_metrics,
-    query_url,
-    get_time_to_first_frame,
-    get_fps_bitrate,
-    CreateResultFile,
-    ClusterInfo,
-)
-from src.prometheus import Prometheus
 from src import variables as var
 from src.k8sAPI import K8sAPI
+from src.lib import (
+    ClusterInfo,
+    CreateResultFile,
+    get_fps_bitrate,
+    get_time_to_first_frame,
+)
+from src.prometheus import Prometheus
 
 
 class StreamingMeasuring:
@@ -40,7 +38,7 @@ class StreamingMeasuring:
 
     def baseline(self):
         logging.info(
-            "Sceanario: Collecting CPU/RAM usage of 'StreamingService' in baseline"
+            "Scenario: Collecting CPU/RAM usage of 'StreamingService' in baseline"
         )
         for rep in range(1, self.repetition + 1, 1):
             logging.info(
@@ -76,13 +74,7 @@ class StreamingMeasuring:
                     prom_server=self.cluster_info.prometheus_ip,
                 )
                 with open(result_file, mode="a", newline="") as f:
-                    result_value = [
-                        cpu[0],
-                        cpu[1],
-                        mem[1],
-                        networkIn[1],
-                        networkOut[1]
-                    ]
+                    result_value = [cpu[0], cpu[1], mem[1], networkIn[1], networkOut[1]]
                     writer = csv.writer(f)
                     writer.writerow(result_value)
                 logging.debug(f"Successfully write {result_value} into {result_file}")
@@ -97,19 +89,19 @@ class StreamingMeasuring:
 
     def get_warm_timeToFirstFrame(self):
         logging.info(
-            "Sceanario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
+            "Scenario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
         )
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
                 for resource in self.resource_requests:
                     logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
                     )
 
                     # 1. Create result file
                     result_file = CreateResultFile.streaming_timeToFirstFrame(
                         nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
                     )
 
                     # 2. Deploy ksvc for measuring
@@ -158,14 +150,14 @@ class StreamingMeasuring:
 
                     PlotResult.timeToFirstFrame(
                         result_file=result_file,
-                        output_file=f"result/2_1_timeToFirstFrame/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                        output_file=f"result/2_1_timeToFirstFrame/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
                     K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
                     time.sleep(
                         2  # Wait for API server to successfully receive delete signal
                     )
-                    K8sAPI.kill_pod_proccess(
+                    K8sAPI.kill_pod_process(
                         namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
                     )
                     while True:
@@ -189,25 +181,25 @@ class StreamingMeasuring:
                     )
 
         logging.info(
-            "End Sceanario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
+            "End Scenario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
         )
 
     def get_fps(self):
         logging.info(
-            "Sceanario: Measure fps of streaming service when pod in warm status"
+            "Scenario: Measure fps of streaming service when pod in warm status"
         )
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
                 for resource in self.resource_requests:
                     logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
                     )
 
                     # 1. Create result file
                     stream_stats_file = CreateResultFile.streaming_bitrate_fps(
                         nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
                     )
 
                     # 2. Deploy ksvc for measuring
@@ -258,12 +250,12 @@ class StreamingMeasuring:
 
                     PlotResult.bitrate_fps(
                         result_file=stream_stats_file,
-                        output_file=f"result/2_2_bitrate_fps/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                        output_file=f"result/2_2_bitrate_fps/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
                     K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
 
-                    K8sAPI.kill_pod_proccess(
+                    K8sAPI.kill_pod_process(
                         namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
                     )
                     while True:
@@ -288,133 +280,118 @@ class StreamingMeasuring:
 
     def get_hardware_resource(self):
         logging.info(
-            "Sceanario: Measure hardware resource of streaming service when pod in warm status"
+            "Scenario: Measure hardware resource of streaming service when pod in warm status"
         )
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
-                for resource in self.resource_requests:
-                    logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
-                    )
+                logging.info(
+                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
+                )
 
-                    # 1. Create result file
-                    stream_resource_file = CreateResultFile.streaming_resource(
-                        nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
-                    )
+                # 1. Create result file
+                stream_resource_file = CreateResultFile.streaming_resource(
+                    nodename=self.hostname,
+                    filename=f"{self.arch}_{var.generate_file_time}_rep{rep}.csv",
+                )
 
-                    # 2. Deploy ksvc for measuring
-                    K8sAPI.deploy_ksvc_streaming(
-                        ksvc_name=self.ksvc_name,
-                        namespace=self.namespace,
-                        image=self.image,
-                        port=self.port,
-                        hostname=self.hostname,
-                        window_time=100,
-                        min_scale=replica,
-                        max_scale=replica,
-                        streaming_info=self.cluster_info.streaming_info,
-                        cpu=resource["cpu"],
-                        memory=resource["memory"],
-                    )
+                # 2. Deploy ksvc for measuring
+                K8sAPI.deploy_ksvc_streaming(
+                    ksvc_name=self.ksvc_name,
+                    namespace=self.namespace,
+                    image=self.image,
+                    port=self.port,
+                    hostname=self.hostname,
+                    window_time=100,
+                    min_scale=replica,
+                    max_scale=replica,
+                    streaming_info=self.cluster_info.streaming_info,
+                )
 
-                    # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                    while True:
-                        if K8sAPI.all_pods_ready(
-                            pods=K8sAPI.get_pod_status_by_ksvc(
-                                namespace=self.namespace, ksvc_name=self.ksvc_name
-                            )
-                        ):
-                            logging.info("All pods ready!")
-                            break
-                        logging.info("Waiting for pods to be ready ...")
-                        time.sleep(2)
-
-                    time.sleep(self.cool_down_time)
-
-                    # 4. Query prometheus to get hardware resources
-                    # GetHardWareUsage.query_prometheus(
-                    #     host_ip=self.host_ip,
-                    #     detection_time=self.detection_time,
-                    #     cluster_info=self.cluster_info,
-                    #     result_file=stream_resource_file,
-                    # )
-                    # GetHardWareUsage.run_ffmpeg_for_duration(
-                    #     url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/{self.cluster_info.streaming_info.streaming_uri}",
-                    #     duration_sec=self.detection_time,
-                    # )
-
-                    thread1 = Thread(
-                        target=GetHardWareUsage.run_ffmpeg_for_duration,
-                        kwargs={
-                            "url": f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
-                            "duration_sec": self.detection_time,
-                        },
-                    )
-
-                    thread2 = Thread(
-                        target=GetHardWareUsage.query_prometheus,
-                        kwargs={
-                            "host_ip": self.host_ip,
-                            "detection_time": self.detection_time,
-                            "cluster_info": self.cluster_info,
-                            "result_file": stream_resource_file,
-                        },
-                    )
-
-                    thread1.start()
-                    thread2.start()
-                    thread1.join()
-                    thread2.join()
-
-                    logging.info(
-                        "End query prometheus to get hardware information when running streaming serviced"
-                    )
-
-                    PlotResult.resource(
-                        result_file=stream_resource_file,
-                        output_file=f"result/2_3_streaming_prom/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
-                    )
-
-                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-
-                    K8sAPI.kill_pod_proccess(
-                        namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
-                    )
-                    while True:
-                        pods = K8sAPI.get_pod_status_by_ksvc(
+                # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                while True:
+                    if K8sAPI.all_pods_ready(
+                        pods=K8sAPI.get_pod_status_by_ksvc(
                             namespace=self.namespace, ksvc_name=self.ksvc_name
                         )
-                        logging.info(
-                            f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
-                        )
-                        time.sleep(2)
-                        if not pods:
-                            logging.info(
-                                f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
-                            )
-                            break
+                    ):
+                        logging.info("All pods ready!")
+                        break
+                    logging.info("Waiting for pods to be ready ...")
+                    time.sleep(2)
 
-                    time.sleep(self.cool_down_time)
+                time.sleep(self.cool_down_time)
+
+                thread1 = Thread(
+                    target=GetHardWareUsage.run_ffmpeg_for_duration,
+                    kwargs={
+                        "url": f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
+                        "duration_sec": self.detection_time,
+                    },
+                )
+
+                thread2 = Thread(
+                    target=GetHardWareUsage.query_prometheus,
+                    kwargs={
+                        "namespace": self.namespace,
+                        "detection_time": self.detection_time,
+                        "cluster_info": self.cluster_info,
+                        "result_file": stream_resource_file,
+                    },
+                )
+
+                thread1.start()
+                thread2.start()
+                thread1.join()
+                thread2.join()
+
+                logging.info(
+                    "End query prometheus to get hardware information when running streaming serviced"
+                )
+
+                PlotResult.resource(
+                    result_file=stream_resource_file,
+                    output_file=f"result/2_3_streaming_prom/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
+                )
+
+                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+
+                K8sAPI.kill_pod_process(
+                    namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
+                )
+                while True:
+                    pods = K8sAPI.get_pod_status_by_ksvc(
+                        namespace=self.namespace, ksvc_name=self.ksvc_name
+                    )
+                    logging.info(
+                        f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                    )
+                    time.sleep(2)
+                    if not pods:
+                        logging.info(
+                            f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                        )
+                        break
+
+                time.sleep(self.cool_down_time)
 
         logging.info("End collecting resource usage when pod in warm status")
 
     def get_cold_timeToFirstFrame(self):
         logging.info(
-            "Sceanario: Get 'time to first frame' of 'StreamingService' when pod in cold status"
+            "Scenario: Get 'time to first frame' of 'StreamingService' when pod in cold status"
         )
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
                 for resource in self.resource_requests:
                     logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
                     )
 
                     # 1. Create result file
                     result_file = CreateResultFile.streaming_timeToFirstFrame_cold(
                         nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
                     )
 
                     # 2. Deploy ksvc for measuring
@@ -469,7 +446,7 @@ class StreamingMeasuring:
                         # After window time, scale down to zero. However, Knative's *queue-proxy* cannot kill ffmpeg proccess.
                         # This lead to huge scale down time.
                         # Following will fix that
-                        K8sAPI.kill_pod_proccess(
+                        K8sAPI.kill_pod_process(
                             namespace=self.namespace,
                             ksvc=self.ksvc_name,
                             keyword="ffmpeg",
@@ -504,14 +481,14 @@ class StreamingMeasuring:
 
                     PlotResult.timeToFirstFrame(
                         result_file=result_file,
-                        output_file=f"result/2_4_timeToFirstFrame_cold/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
+                        output_file=f"result/2_4_timeToFirstFrame_cold/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
                     K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
                     time.sleep(
                         2  # Wait for API server to successfully receive delete signal
                     )
-                    K8sAPI.kill_pod_proccess(
+                    K8sAPI.kill_pod_process(
                         namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
                     )
                     while True:
@@ -535,153 +512,33 @@ class StreamingMeasuring:
                     )
 
         logging.info(
-            "End Sceanario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
+            "End Scenario: Get 'time to first frame' of 'StreamingService' when pod in warm status"
         )
-
-    def measure(self):
-        logging.info(
-            "Sceanario: Measure fps, cpu_usage, mem_usage, network(in/out) of streaming service when pod in warm status"
-        )
-        # 1. Load config values
-
-        for replica in self.replicas:
-            for rep in range(1, self.repetition + 1, 1):
-                for resource in self.resource_requests:
-                    logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
-                    )
-
-                    # 2. Create result file
-                    prom_file = CreateResultFile.streaming_resource(
-                        nodename=self.hostname,
-                        filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
-                    )
-                    stream_stats_file = CreateResultFile.streaming_bitrate_fps(
-                        nodename=self.hostname,
-                        filename=f"{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.csv",
-                    )
-
-                    # 3. Deploy ksvc for measuring
-                    K8sAPI.deploy_ksvc_streaming(
-                        ksvc_name=self.ksvc_name,
-                        namespace=self.namespace,
-                        image=self.image,
-                        port=self.port,
-                        hostname=self.hostname,
-                        window_time=100,
-                        min_scale=replica,
-                        max_scale=replica,
-                        streaming_info=self.cluster_info.streaming_info,
-                        cpu=resource["cpu"],
-                        memory=resource["memory"],
-                    )
-
-                    # 4. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                    while True:
-                        if K8sAPI.all_pods_ready(
-                            pods=K8sAPI.get_pod_status_by_ksvc(
-                                namespace=self.namespace, ksvc_name=self.ksvc_name
-                            )
-                        ):
-                            logging.info("All pods ready!")
-                            break
-                        logging.info("Waiting for pods to be ready ...")
-                        time.sleep(2)
-
-                    time.sleep(self.cool_down_time)
-
-                    # 5. Executing curl save to data
-                    start_time = time.time()
-                    # 5.1. Executing curl to get time to first frame
-                    # Curl to the url to trigger streaming service
-                    # Result of curl is:
-                    # [time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total]
-                    # We only focus on time_starttransfer which is time to first frame
-                    logging.info("Start trigger service")
-                    result = get_curl_metrics(
-                        url=f"http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/{self.detection_time}"
-                    )
-
-                    logging.debug(
-                        f"Curl: http://{self.ksvc_name}.{self.namespace}.192.168.17.1.sslip.io/stream/start/{self.resolution}/{self.detection_time}"
-                    )
-                    logging.debug(f"Trigger return {result}")
-
-                    # 5.2. Now we will start 2 process
-                    # The first one is trigger prometheus server to query cpu, memory, and network
-                    # The second one is trigger service to get current bitrate and fps
-                    # 5.2.1. Get bit rate and fps
-                    thread1 = Thread(
-                        target=MainThread.get_bitrate_fps,
-                        kwargs={
-                            "detection_time": self.detection_time,
-                            "ksvc_name": self.ksvc_name,
-                            "namespace": self.namespace,
-                            "result_file": stream_stats_file,
-                        },
-                    )
-                    # 5.2.2. Trigger prometheus server
-                    thread2 = Thread(
-                        target=MainThread.query_prometheus,
-                        kwargs={
-                            "host_ip": self.host_ip,
-                            "detection_time": self.detection_time,
-                            "result_file": prom_file,
-                        },
-                    )
-                    thread1.start()
-                    thread2.start()
-                    thread1.join()
-                    thread2.join()
-
-                    while (time.time() - start_time) < (self.detection_time):
-                        time.sleep(1)
-
-                    PlotResult.resource(
-                        result_file=prom_file,
-                        output_file=f"result/2_3_streaming_prom/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
-                        resolution=self.resolution,
-                    )
-                    PlotResult.bitrate_fps(
-                        result_file=stream_stats_file,
-                        output_file=f"result/2_2_bitrate_fps/{self.hostname}/{self.arch}_{self.resolution}_{var.generate_file_time}_rep{rep}.png",
-                        resolution=self.resolution,
-                    )
-
-                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-
-                    logging.info(
-                        "End collecting time to first frame when pod in warm status"
-                    )
 
 
 class GetHardWareUsage:
     @staticmethod
-    def query_prometheus(host_ip, detection_time, cluster_info, result_file):
+    def query_prometheus(namespace, detection_time, cluster_info, result_file):
         logging.info(
             "Start query prometheus to get hardware information when running streaming service"
         )
 
         start_time = time.time()
-        if detection_time > 5:
-            time.sleep(5)
 
         while time.time() - start_time < detection_time:
             logging.info("Collecting prometheus metrics ...")
-            cpu = Prometheus.queryCPU(
-                instance=host_ip, prom_server=cluster_info.prometheus_ip
+            cpu = Prometheus.queryPodCPU(
+                namespace=namespace, prom_server=cluster_info.prometheus_ip
             )
-            mem = Prometheus.queryMem(
-                instance=host_ip, prom_server=cluster_info.prometheus_ip
+            mem = Prometheus.queryPodMemory(
+                namespace=namespace, prom_server=cluster_info.prometheus_ip
             )
-            networkIn = Prometheus.queryNetworkIn(
-                instance=host_ip,
-                cluster_info=cluster_info,
+            networkIn = Prometheus.queryPodNetworkIn(
+                namespace=namespace,
                 prom_server=cluster_info.prometheus_ip,
             )
-            networkOut = Prometheus.queryNetworkOut(
-                instance=host_ip,
-                cluster_info=cluster_info,
+            networkOut = Prometheus.queryPodNetworkOut(
+                namespace=namespace,
                 prom_server=cluster_info.prometheus_ip,
             )
             with open(result_file, mode="a", newline="") as f:
@@ -826,7 +683,7 @@ class PlotResult:
         # Change layout to a 2x2 grid for better readability
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
         fig.suptitle(
-            f"Streaming Service Resource Usage",
+            "Streaming Service Resource Usage",
             fontsize=18,
             fontweight="bold",
         )
@@ -834,13 +691,13 @@ class PlotResult:
         # Plot 1: CPU Usage (Top-Left)
         axes[0, 0].boxplot(cpu_data)
         axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
-        axes[0, 0].set_ylabel("Usage (%)")
+        axes[0, 0].set_ylabel("Usage (mCPU)")
         axes[0, 0].set_xticklabels(["CPU"])
 
         # Plot 2: Memory Usage (Top-Right)
         axes[0, 1].boxplot(mem_data)
         axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
-        axes[0, 1].set_ylabel("Usage (%)")
+        axes[0, 1].set_ylabel("Usage (MB)")
         axes[0, 1].set_xticklabels(["Memory"])
 
         # Plot 3: Network In Traffic (Bottom-Left)
@@ -901,7 +758,7 @@ class PlotResult:
         ax.boxplot(resp_time)
 
         plt.title(
-            f"Distribution of time to first frame of streaming service",
+            "Distribution of time to first frame of streaming service",
             fontsize=16,
         )
         plt.ylabel("Time to first frame (ms)", fontsize=12)
@@ -965,7 +822,7 @@ class PlotResult:
         # Change layout to a 2x2 grid for better readability
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
         fig.suptitle(
-            f"Streaming Service Resource Usage",
+            "Streaming Service Resource Usage",
             fontsize=18,
             fontweight="bold",
         )
@@ -973,13 +830,13 @@ class PlotResult:
         # Plot 1: CPU Usage (Top-Left)
         axes[0, 0].boxplot(cpu_data)
         axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
-        axes[0, 0].set_ylabel("Usage (%)")
+        axes[0, 0].set_ylabel("Usage (mCPU)")
         axes[0, 0].set_xticklabels(["CPU"])
 
         # Plot 2: Memory Usage (Top-Right)
         axes[0, 1].boxplot(mem_data)
         axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
-        axes[0, 1].set_ylabel("Usage (%)")
+        axes[0, 1].set_ylabel("Usage (MB)")
         axes[0, 1].set_xticklabels(["Memory"])
 
         # Plot 3: Network In Traffic (Bottom-Left)
@@ -1110,7 +967,7 @@ class PlotResult:
 
         fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
         fig.suptitle(
-            f"Streaming service",
+            "Streaming service",
             fontsize=16,
         )
 

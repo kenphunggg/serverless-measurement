@@ -1,23 +1,19 @@
+import csv
 import logging
 import time
-import csv
-import matplotlib.pyplot as plt
-import numpy as np
 
+import matplotlib.pyplot as plt
+
+from src import variables as var
+from src.k8sAPI import K8sAPI
 
 # import requests
-
 from src.lib import (
-    get_curl_metrics,
-    CreateResultFile,
-    create_curl_result_file,
-    create_resource_web_result_file,
-    query_url,
     ClusterInfo,
-    Node,
+    CreateResultFile,
+    get_curl_metrics,
+    query_url,
 )
-from src.k8sAPI import K8sAPI
-from src import variables as var
 from src.prometheus import Prometheus
 
 
@@ -40,7 +36,7 @@ class WebMeasuring:
         self.cluster_info: ClusterInfo = cluster_info
 
     def baseline(self):
-        logging.info("Sceanario: Collecting CPU/RAM usage of 'WebService' in baseline")
+        logging.info("Scenario: Collecting CPU/RAM usage of 'WebService' in baseline")
         for rep in range(1, self.repetition + 1, 1):
             logging.info(
                 f"Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
@@ -95,19 +91,19 @@ class WebMeasuring:
             )
 
     def get_warm_resptime(self):
-        logging.info("Sceanario: Response time of web service when pod in warm status")
+        logging.info("Scenario: Response time of web service when pod in warm status")
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
                 for resource in self.resource_requests:
                     logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
                     )
 
                     # 1. Create result file
                     result_file = CreateResultFile.web_curl(
                         nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
                     )
 
                     # 2. Deploy ksvc for measuring
@@ -138,7 +134,9 @@ class WebMeasuring:
                         time.sleep(2)
                     time.sleep(self.cool_down_time)
 
-                    logging.info("Start collecting response time when pod in warm status")
+                    logging.info(
+                        "Start collecting response time when pod in warm status"
+                    )
 
                     # 4. Executing curl to get response time for every 2s and save to data
                     for _ in range(self.curl_time):
@@ -170,7 +168,7 @@ class WebMeasuring:
                     # 5. Plot result
                     PlotResult.plot_respt(
                         result_file=result_file,
-                        output_file=f"result/1_1_curl/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                        output_file=f"result/1_1_curl/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
                     # 6. Delete ksvc
@@ -178,23 +176,23 @@ class WebMeasuring:
                     time.sleep(self.cool_down_time)
 
         logging.info(
-            "End sceanario: Response time of web service when pod in warm status"
+            "End scenario: Response time of web service when pod in warm status"
         )
 
     def get_warm_hardware_usage(self):
-        logging.info("Sceanario: Collecting CPU/RAM usage when pod in warm status")
+        logging.info("Scenario: Collecting CPU/RAM usage when pod in warm status")
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
                 for resource in self.resource_requests:
                     logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
                     )
 
                     # 1. Create result file
                     result_file = CreateResultFile.web_resource(
                         nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
                     )
 
                     # 2. Deploy ksvc for measuring
@@ -273,7 +271,7 @@ class WebMeasuring:
                     # 5. Plot result
                     PlotResult.plot_hardware(
                         result_file=result_file,
-                        output_file=f"result/1_2_resource_web/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                        output_file=f"result/1_2_resource_web/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
                     logging.info(
@@ -284,22 +282,22 @@ class WebMeasuring:
                     K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
                     time.sleep(self.cool_down_time)
 
-        logging.info("End sceanario: Collecting CPU/RAM usage when pod in warm status")
+        logging.info("End scenario: Collecting CPU/RAM usage when pod in warm status")
 
     def get_cold_resptime(self):
-        logging.info("Sceanario: Response time of web service when pod in cold status")
+        logging.info("Scenario: Response time of web service when pod in cold status")
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
                 for resource in self.resource_requests:
                     logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource["cpu"]}, Mem req: {resource["memory"]}"
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
                     )
 
                     # 1. Create result file
                     result_file = CreateResultFile.web_curl_cold(
                         nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.csv",
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
                     )
 
                     # 2. Deploy ksvc for measuring
@@ -396,7 +394,7 @@ class WebMeasuring:
                     # 5. Plot result
                     PlotResult.plot_respt(
                         result_file=result_file,
-                        output_file=f"result/1_3_curl_cold/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource["cpu"]}cpu_{resource["memory"]}mem_rep{rep}.png",
+                        output_file=f"result/1_3_curl_cold/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
                     # 6. Delete ksvc
@@ -404,7 +402,7 @@ class WebMeasuring:
                     time.sleep(self.cool_down_time)
 
         logging.info(
-            "End sceanario: Response time of web service when pod in cold status"
+            "End scenario: Response time of web service when pod in cold status"
         )
 
 
@@ -458,7 +456,7 @@ class PlotResult:
         # Change layout to a 2x2 grid for better readability
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
         fig.suptitle(
-            f"Streaming Service Resource Usage",
+            "Streaming Service Resource Usage",
             fontsize=18,
             fontweight="bold",
         )
@@ -594,7 +592,7 @@ class PlotResult:
         # Change layout to a 2x2 grid for better readability
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
         fig.suptitle(
-            f"Streaming Service Resource Usage",
+            "Streaming Service Resource Usage",
             fontsize=18,
             fontweight="bold",
         )

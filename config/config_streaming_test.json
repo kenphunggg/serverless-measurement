@@ -11,11 +11,11 @@
             "image": "docker.io/lazyken/measure-streaming:v3@sha256:e27e18c001aee1f5bd9ac787a856bd0278b2890b1555b992d4e301a1f72c7e7d",
             "port": 8080,
             "namespace": "serverless",
-            "hostname": "edge-node",
-            "host_ip": "192.168.17.131",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.17.130",
             "cool_down_time": 30,
-            "curl_time": 2,
-            "detection_time": 30,
+            "curl_time": 10,
+            "detection_time": 60,
             "resource_requests": [
                 {
                     "cpu": 0,
@@ -29,7 +29,7 @@
         }
     ],
     "prometheus": {
-        "server_ip": "192.168.17.129",
+        "server_ip": "localhost",
         "port": 9090,
         "interface": "ens33"
     },

@@ -1,12 +1,12 @@
 import logging
+import os
 import re
 import subprocess
 import sys
-import os
-import requests
-from typing import List, Optional, Dict, Iterator
-
 import time
+from typing import List
+
+import requests
 
 
 class Node:
@@ -168,7 +168,7 @@ class CreateResultFile:
             test_case="2_3_streaming_prom",
             nodename=nodename,
             filename=filename,
-            header="timestamp,cpu_usage(%),mem_usage(%),network_in(MBps), network_out(MBps)\n",
+            header="timestamp,cpu_usage(mCPU),mem_usage(MB),network_in(MBps), network_out(MBps)\n",
         )
 
     @staticmethod
@@ -206,11 +206,14 @@ def get_curl_metrics(url: str) -> dict | None:
     timeout_seconds = "600"
     command = [
         "curl",
-        "--max-time", timeout_seconds,
+        "--max-time",
+        timeout_seconds,
         "-s",
-        "-o", "/dev/null",
-        "-w", curl_format,
-        url
+        "-o",
+        "/dev/null",
+        "-w",
+        curl_format,
+        url,
     ]
 
     try:
@@ -240,7 +243,6 @@ def get_curl_metrics(url: str) -> dict | None:
         return None
 
 
-
 def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | None:
     """
     Waits for a stream to become available (HTTP 200) and then
@@ -248,8 +250,7 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
 
     Args:
         url: The URL of the video stream to test.
-        wait_timeout: The maximum time in seconds to wait for the stream
-                      to become available before giving up.
+        wait_timeout: The maximum time in seconds to wait for the stream to become available before giving up.
 
     Returns:
         The time to the first frame in seconds (float),
@@ -257,11 +258,14 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
     """
     # --- Part 1: Wait for the stream to be ready ---
     # This loop replicates: `while [ $(curl...) -ne 200 ]; do sleep 0.1; done`
-    wait_start_time = time.monotonic()
+    start_time = time.monotonic()
     logging.info(f"Waiting for stream to be ready at {url}...")
+    i = 0
     while True:
+        logging.info(f"Try connecting to streaming service [{i} times]")
+        i += 1
         # Check if we've waited too long
-        if time.monotonic() - wait_start_time > wait_timeout:
+        if time.monotonic() - start_time > wait_timeout:
             logging.error(
                 f"Timeout: Waited longer than {wait_timeout}s for URL to be ready."
             )
@@ -270,9 +274,11 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
             # Use a HEAD request for efficiency, just like `curl --head`
             response = requests.head(url, timeout=2)
             if response.status_code == 200:
-                logging.info(f"Stream is ready (HTTP 200 OK). Proceeding with ffmpeg.")
+                logging.info("Stream is ready (HTTP 200 OK). Proceeding with ffmpeg.")
                 break  # Exit the loop and continue to ffmpeg
-        except requests.RequestException:
+        except requests.RequestException as e:
+            logging.warning(f"Connection failed, retrying in 1 second... Error: {e}")
+            time.sleep(1)
             # Ignore connection errors and just retry
             pass
 
@@ -292,8 +298,6 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
     ]
 
     try:
-        start_time = time.monotonic()
-
         subprocess.run(
             command,
             capture_output=True,  # Captures stdout and stderr

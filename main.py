@@ -1,14 +1,12 @@
-import logging
-import json
-import time
 import datetime
+import json
+import logging
 from typing import List
 
-from src.main_tasks.web_measuring import WebMeasuring
-from src.main_tasks.streaming import StreamingMeasuring
-from src.lib import ClusterInfo, Node, DatabaseInfo, StreamingInfo, PrometheusServer
 from src import variables as var
-
+from src.lib import ClusterInfo, DatabaseInfo, Node, PrometheusServer, StreamingInfo
+from src.main_tasks.streaming import StreamingMeasuring
+from src.main_tasks.web_measuring import WebMeasuring
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -84,9 +82,9 @@ if __name__ == "__main__":
         if test_case["test_case"] == "web":
             # pass
             web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
-            web_measuring.baseline()
+            # web_measuring.baseline()
             # web_measuring.get_warm_resptime()
-            # web_measuring.get_warm_hardware_usage()
+            web_measuring.get_warm_hardware_usage()
             # web_measuring.get_cold_resptime()
             del web_measuring
 
@@ -96,8 +94,8 @@ if __name__ == "__main__":
                 config=test_case, cluster_info=my_cluster
             )
             # streaming_measuring.baseline()
-            # streaming_measuring.get_warm_timeToFirstFrame()
-            streaming_measuring.get_fps()
+            streaming_measuring.get_warm_timeToFirstFrame()
+            # streaming_measuring.get_fps()
             # streaming_measuring.get_hardware_resource()
             # streaming_measuring.get_cold_timeToFirstFrame()
             del streaming_measuring

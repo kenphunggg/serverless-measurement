@@ -93,7 +93,7 @@
         }
     ],
     "prometheus": {
-        "server_ip": "192.168.17.161",
+        "server_ip": "localhost",
         "port": 9090,
         "interface": "ens33"
     },

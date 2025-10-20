@@ -235,6 +235,7 @@ class StreamingMeasuring:
                     logging.info("Start catching fps/bitrate of streaming service")
                     stream_stats = get_fps_bitrate(
                         stream_url=f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
+                        num_samples=self.curl_time,
                         # duration=self.detection_time,
                     )
 

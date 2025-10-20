@@ -341,7 +341,7 @@ def get_fps_bitrate(stream_url, num_samples=100):
 
     Returns:
         list: A list of floats containing the captured FPS values. Returns an empty
-              list if the process fails or times out before capturing any data.
+                list if the process fails or times out before capturing any data.
     """
     # Construct the full FFmpeg command from the URL
     STARTUP_TIMEOUT_SECONDS = 30.0

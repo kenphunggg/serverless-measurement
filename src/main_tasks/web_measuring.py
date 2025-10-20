@@ -234,24 +234,42 @@ class WebMeasuring:
 
                     while time.time() - start_time < self.detection_time:
                         logging.info("Collecting prometheus metrics ...")
-                        cpu = Prometheus.queryCPU(
+                        # cpu = Prometheus.queryCPU(
+                        #     instance=self.host_ip,
+                        #     prom_server=self.cluster_info.prometheus_ip,
+                        # )
+                        # mem = Prometheus.queryMem(
+                        #     instance=self.host_ip,
+                        #     prom_server=self.cluster_info.prometheus_ip,
+                        # )
+                        # networkIn = Prometheus.queryNetworkIn(
+                        #     instance=self.host_ip,
+                        #     cluster_info=self.cluster_info,
+                        #     prom_server=self.cluster_info.prometheus_ip,
+                        # )
+                        # networkOut = Prometheus.queryNetworkOut(
+                        #     instance=self.host_ip,
+                        #     cluster_info=self.cluster_info,
+                        #     prom_server=self.cluster_info.prometheus_ip,
+                        # )
+
+                        cpu = Prometheus.queryPodCPU(
                             instance=self.host_ip,
                             prom_server=self.cluster_info.prometheus_ip,
                         )
-                        mem = Prometheus.queryMem(
+                        mem = Prometheus.queryPodMemory(
                             instance=self.host_ip,
                             prom_server=self.cluster_info.prometheus_ip,
                         )
-                        networkIn = Prometheus.queryNetworkIn(
-                            instance=self.host_ip,
-                            cluster_info=self.cluster_info,
+                        networkIn = Prometheus.queryPodNetworkIn(
+                            namespace=self.namespace,
                             prom_server=self.cluster_info.prometheus_ip,
                         )
-                        networkOut = Prometheus.queryNetworkOut(
-                            instance=self.host_ip,
-                            cluster_info=self.cluster_info,
+                        networkOut = Prometheus.queryPodNetworkOut(
+                            namespace=self.namespace,
                             prom_server=self.cluster_info.prometheus_ip,
                         )
+
                         with open(result_file, mode="a", newline="") as f:
                             result_value = [
                                 cpu[0],

@@ -15,7 +15,7 @@
             "host_ip": "172.16.42.14",
             "cool_down_time": 30,
             "curl_time": 60,
-            "detection_time": 60,
+            "detection_time": 300,
             "resource_requests": [
                 {
                     "cpu": 0,
@@ -23,51 +23,51 @@
                 },
                 {
                     "cpu": "100m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "200m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "300m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "400m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "500m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "600m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "700m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "800m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "900m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "1000m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "1500m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 },
                 {
                     "cpu": "2000m",
-                    "memory": "128Mi"
+                    "memory": "2Gi"
                 }
             ]
         }

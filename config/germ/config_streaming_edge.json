@@ -1,15 +1,15 @@
 {
     "test_cases": [
         {
-            "test_case": "web",
+            "test_case": "streaming",
             "repetition": 5,
             "replicas": [
                 1
             ],
-            "ksvc_name": "measure-web",
-            "arch": "arm64",
-            "image": "docker.io/lazyken/measure-app:arm64-v1@sha256:09abd413626372d81795f1b6eb6620d2b4d1f6f2c21e1d63badec39529af2425",
-            "port": 5000,
+            "ksvc_name": "measure-streaming",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-streaming:v3@sha256:e27e18c001aee1f5bd9ac787a856bd0278b2890b1555b992d4e301a1f72c7e7d",
+            "port": 8080,
             "namespace": "serverless",
             "hostname": "ubuntu",
             "host_ip": "172.16.42.11",
@@ -97,7 +97,7 @@
         ]
     },
     "streaming_info": {
-        "source_ip": "192.168.17.162:2000",
+        "source_ip": "172.16.42.14:2000",
         "stream_uri": "live/playlist.m3u8"
     },
     "database_info": {

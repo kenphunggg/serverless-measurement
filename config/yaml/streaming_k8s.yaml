@@ -1,0 +1,64 @@
+# This YAML file contains two objects, separated by ---
+# 1. The Deployment: Manages your app's Pod (container).
+# 2. The Service: Exposes your app to the internet.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: measure-streaming
+  labels:
+    app: measure-streaming
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: measure-streaming
+  template:
+    metadata:
+      labels:
+        app: measure-streaming
+    spec:
+      containers:
+      - name: measure-streaming-container
+        image: docker.io/lazyken/measure-streaming-k8s:v1
+        env:
+        - name: SOURCE_IP
+          value: "192.168.17.130:2000" # Your desired default IP
+        ports:
+        - name: api
+          containerPort: 5000
+        - name: hls
+          containerPort: 8080
+        readinessProbe:
+          httpGet:
+            path: /stream/status
+            port: api # Refers to the port named 'api' above
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /stream/status
+            port: api
+          initialDelaySeconds: 30
+          periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: measure-streaming
+spec:
+  type: NodePort
+  selector:
+    app: measure-streaming
+  ports:
+  - name: api
+    protocol: TCP
+    port: 5000       # Port the Service exposes internally in the cluster
+    targetPort: api  # Port on the Pod (references port 'name' from Deployment)
+    # nodePort: 30001 # Optional: You can specify a port in the 30000-32767 range
+  - name: hls
+    protocol: TCP
+    port: 8080       # Port the Service exposes internally in the cluster
+    targetPort: hls  # Port on the Pod
+    # nodePort: 30002 # Optional: You can specify a port
+

@@ -105,15 +105,14 @@ class StreamingMeasuring:
                     )
 
                     # 2. Deploy ksvc for measuring
-                    K8sAPI.deploy_ksvc_streaming(
-                        ksvc_name=self.ksvc_name,
+                    K8sAPI.deploy_k8s_streaming(
+                        svc_name=self.ksvc_name,
                         namespace=self.namespace,
-                        image=self.image,
-                        port=self.port,
+                        image="docker.io/lazyken/measure-streaming-k8s:v1",
+                        flask_port=5000,
+                        stream_port=self.port,
                         hostname=self.hostname,
-                        window_time=100,
-                        min_scale=replica,
-                        max_scale=replica,
+                        replica=replica,
                         streaming_info=self.cluster_info.streaming_info,
                         cpu=resource["cpu"],
                         memory=resource["memory"],

@@ -225,6 +225,210 @@ class K8sAPI:
                 logging.error(f"API Error for '{ksvc_name}': {e}")
 
     @staticmethod
+    def k8s_streaming_yaml(
+        svc_name: str,
+        namespace: str,
+        image: str,
+        flask_port: int,
+        stream_port: int,
+        hostname: str,
+        replica: int,
+        streaming_info: StreamingInfo,
+        cpu: int = 0,
+        memory: int = 0,
+    ):
+        # --- Document 1: Deployment Dictionary ---
+        deployment_config = {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {
+                "name": svc_name,
+                "labels": {"app": svc_name},
+                "namespace": namespace,
+            },
+            "spec": {
+                "replicas": replica,  # Updated variable
+                "selector": {"matchLabels": {"app": svc_name}},
+                "template": {
+                    "metadata": {"labels": {"app": svc_name}},
+                    "spec": {
+                        # --- nodeSelector is now included ---
+                        "nodeSelector": {"kubernetes.io/hostname": hostname},
+                        "containers": [
+                            {
+                                "name": f"{svc_name}-container",
+                                "image": image,
+                                "env": [
+                                    {
+                                        "name": "SOURCE_IP",
+                                        # This uses the streaming_source variable passed to the function
+                                        "value": streaming_info.streaming_source,
+                                    }
+                                ],
+                                "ports": [
+                                    {"name": "api", "containerPort": flask_port},
+                                    {"name": "hls", "containerPort": stream_port},
+                                ],
+                            }
+                        ],
+                    },
+                },
+            },
+        }
+
+        if cpu != 0 and memory != 0:
+            resource_settings = {
+                "limits": {
+                    "cpu": cpu,
+                    "memory": memory,
+                },
+            }
+
+            deployment_config["spec"]["template"]["spec"]["containers"][0][
+                "resources"
+            ] = resource_settings
+
+        service_config = {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {"name": svc_name, "namespace": namespace},
+            "spec": {
+                "type": "NodePort",
+                "selector": {"app": svc_name},
+                "ports": [
+                    {
+                        "name": "api",
+                        "protocol": "TCP",
+                        "port": flask_port,  # Use your function variable
+                        "targetPort": "api",
+                    },
+                    {
+                        "name": "hls",
+                        "protocol": "TCP",
+                        "port": stream_port,  # Use your function variable
+                        "targetPort": "hls",
+                    },
+                ],
+            },
+        }
+
+        return [deployment_config, service_config]
+
+    @staticmethod
+    def deploy_k8s_streaming(
+        svc_name: str,
+        namespace: str,
+        image: str,
+        flask_port: int,
+        stream_port: int,
+        hostname: str,
+        replica: int,
+        streaming_info: StreamingInfo,
+        cpu: int = 0,
+        memory: int = 0,
+    ):
+        """
+        Applies (creates or replaces) Kubernetes Deployment and Service configs.
+        Uses logging for output.
+        """
+        # Load Kubernetes configuration from default location (~/.kube/config)
+        try:
+            config.load_kube_config()
+            logging.debug("Kubernetes config loaded successfully.")
+        except config.ConfigException as e:
+            logging.critical(
+                "Could not load kubeconfig. Is it configured correctly? Error: %s", e
+            )
+            return
+
+        # Create API clients
+        apps_v1_api = client.AppsV1Api()
+        core_v1_api = client.CoreV1Api()
+        logging.debug("Kubernetes API clients created.")
+
+        # Get the configuration dictionaries from your function
+        try:
+            configs = K8sAPI.k8s_streaming_yaml(
+                svc_name=svc_name,
+                namespace=namespace,
+                image=image,
+                flask_port=flask_port,
+                stream_port=stream_port,
+                hostname=hostname,
+                replica=replica,
+                streaming_info=streaming_info,
+                cpu=cpu,
+                memory=memory,
+            )
+            deployment_config = configs[0]
+            service_config = configs[1]
+        except Exception:
+            # Replaced print with logger.exception to get the full stack trace
+            logging.error("Error generating K8s config dictionaries")
+            return
+
+        # --- 1. Apply Deployment ---
+        try:
+            # Try to read the deployment
+            apps_v1_api.read_namespaced_deployment(name=svc_name, namespace=namespace)
+
+            # If it exists, replace it
+            logging.info("Deployment '%s' already exists. Replacing...", svc_name)
+            api_response = apps_v1_api.replace_namespaced_deployment(
+                name=svc_name, namespace=namespace, body=deployment_config
+            )
+            logging.info("Deployment '%s' replaced.", api_response.metadata.name)
+
+        except ApiException as e:
+            if e.status == 404:
+                # If it doesn't exist (404), create it
+                logging.info("Deployment '%s' not found. Creating...", svc_name)
+                try:
+                    api_response = apps_v1_api.create_namespaced_deployment(
+                        namespace=namespace, body=deployment_config
+                    )
+                    logging.info("Deployment '%s' created.", api_response.metadata.name)
+                except ApiException:
+                    # Replaced print with logger.exception
+                    logging.error("Error creating deployment '%s'", svc_name)
+            else:
+                # Other API error
+                # Replaced print with logger.exception
+                logging.error("Error applying deployment '%s'", svc_name)
+
+        # --- 2. Apply Service ---
+        try:
+            # Try to read the service
+            existing_service = core_v1_api.read_namespaced_service(
+                name=svc_name, namespace=namespace
+            )
+
+            # If it exists, replace it.
+            service_config["spec"]["clusterIP"] = existing_service.spec.cluster_ip
+            logging.info("Service '%s' already exists. Replacing...", svc_name)
+            api_response = core_v1_api.replace_namespaced_service(
+                name=svc_name, namespace=namespace, body=service_config
+            )
+            logging.info("Service '%s' replaced.", api_response.metadata.name)
+
+        except ApiException as e:
+            if e.status == 404:
+                # If it doesn't exist (404), create it
+                logging.info("Service '%s' not found. Creating...", svc_name)
+                try:
+                    api_response = core_v1_api.create_namespaced_service(
+                        namespace=namespace, body=service_config
+                    )
+                    logging.info("Service '%s' created.", api_response.metadata.name)
+                except ApiException:
+                    # Replaced print with logger.exception
+                    logging.error("Error creating service '%s'", svc_name)
+            else:
+                # Other API error
+                # Replaced print with logger.exception
+                logging.error("Error applying service '%s'", svc_name)
+
+    @staticmethod
     def exec_cmd_pod(
         command: List[str], namespace: str, podname: str, container_name: str
     ):

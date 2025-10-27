@@ -20,6 +20,6 @@ spec:
           value: "192.168.17.130:2000"
         resources:
           limits:
-            cpu: "100m"    
+            cpu: "100m"
       nodeSelector:
         kubernetes.io/hostname: cloud-node

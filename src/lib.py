@@ -243,6 +243,108 @@ def get_curl_metrics(url: str) -> dict | None:
         return None
 
 
+def get_time_to_first_frame_warm(
+    url: str,
+    wait_timeout: float = 6000.0,
+) -> bool:
+    """
+    Waits for a stream (HLS playlist) to become available (HTTP 200)
+    and then runs ffmpeg to confirm it can be decoded.
+
+    Args:
+        url: The URL of the video stream (playlist.m3u8) to test.
+        wait_timeout: The maximum time in seconds to wait for the stream
+                      to become available before giving up.
+
+    Returns:
+        True if the stream was found and ffmpeg processed the first frame.
+        False otherwise.
+    """
+
+    # --- 1. Poll for the HLS playlist ---
+    wait_start_time = time.monotonic()
+    logging.debug(f"Waiting for stream to become available at: {url}")
+
+    while True:
+        elapsed_wait = time.monotonic() - wait_start_time
+        if elapsed_wait > wait_timeout:
+            logging.error(
+                f"Timeout: Waited {elapsed_wait:.2f}s, but stream at {url} never became available (HTTP 404)."
+            )
+            return False
+
+        try:
+            # Use a short timeout for the polling request
+            response = requests.get(url, timeout=1.0)
+
+            if response.status_code == 200:
+                logging.info(
+                    f"Stream at {url} is UP (HTTP 200) after {elapsed_wait:.2f}s."
+                )
+                break  # Playlist is available!
+            elif response.status_code == 404:
+                # 404: File not found. This is expected. Wait and retry.
+                logging.warning("Got 404, file not ready yet. Retrying...")
+                time.sleep(0.1)  # Wait 100ms before retrying
+            else:
+                logging.warning(
+                    f"Stream not ready (HTTP {response.status_code}). Waiting..."
+                )
+        except requests.exceptions.ConnectionError:
+            # Server (Nginx) isn't even responding. Wait and retry.
+            logging.warning("Connection error, server not ready. Retrying...")
+
+        except requests.RequestException as e:
+            # This handles connection errors, etc.
+            logging.warning(f"Stream not ready (RequestException: {e}). Waiting...")
+
+        time.sleep(0.25)  # Poll every 250ms
+
+    # --- 2. Once playlist is found, run ffmpeg ---
+    # The calling code is measuring the total time. This function's job
+    # is to block until the first frame is actually decoded.
+
+    command = [
+        "ffmpeg",
+        "-i",
+        url,
+        "-vframes",
+        "1",  # Exit after processing the first frame
+        "-f",
+        "null",  # Discard the frame data
+        "-",
+    ]
+
+    try:
+        # Calculate remaining time for the ffmpeg process itself
+        ffmpeg_timeout = max(1.0, wait_timeout - (time.monotonic() - wait_start_time))
+
+        subprocess.run(
+            command,
+            capture_output=True,  # Captures stdout and stderr
+            text=True,  # Decodes output as text
+            check=True,  # Raises an error if ffmpeg fails
+            timeout=ffmpeg_timeout,  # Timeout for the ffmpeg process
+        )
+
+        logging.debug("ffmpeg successfully processed the first frame.")
+        return True  # Success!
+
+    except subprocess.CalledProcessError as e:
+        # This will catch errors if ffmpeg finds the playlist but fails to decode
+        logging.error(f"ffmpeg failed for URL: {url}")
+        logging.error(f"FFmpeg STDERR:\n{e.stderr}")
+        return False
+    except subprocess.TimeoutExpired:
+        logging.error(f"ffmpeg timed out while processing the stream from URL: {url}")
+        return False
+    except FileNotFoundError:
+        logging.error(
+            "ffmpeg command not found. Is it installed and in your system's PATH?"
+        )
+        return False
+
+
 def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | None:
     """
     Waits for a stream to become available (HTTP 200) and then
@@ -344,8 +446,8 @@ def get_fps_bitrate(stream_url, num_samples=100):
                 list if the process fails or times out before capturing any data.
     """
     # Construct the full FFmpeg command from the URL
-    STARTUP_TIMEOUT_SECONDS = 30.0
-    INACTIVITY_TIMEOUT_SECONDS = 15.0
+    STARTUP_TIMEOUT_SECONDS = 6000
+    INACTIVITY_TIMEOUT_SECONDS = 6000
     command = [
         "ffmpeg",
         # Suppress verbose logs but keep the one-line progress stats
@@ -458,7 +560,7 @@ def query_url(url: str) -> dict | None:
 
     logging.debug(f"Requesting URL: {url}")
 
-    start_time = time.time()
+    # start_time = time.time()
     while True:
         try:
             response = requests.get(url)

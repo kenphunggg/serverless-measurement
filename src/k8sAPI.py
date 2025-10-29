@@ -500,6 +500,96 @@ class K8sAPI:
         logging.info(f"Successfully kill {keyword} | Response: {resp}")
 
     @staticmethod
+    def get_pod_status_by_deployment(namespace: str, deployment_name: str) -> list:
+        """Get pod status by namespace and deployment name
+        by reading the deployment's own label selector.
+
+        Args:
+            namespace (str): namespace of finding pods
+            deployment_name (str): name of the deployment
+
+        Returns:
+            list: `list` of `dict` {"name": pod.metadata.name, "status": pod.status.phase}
+        """
+        result = []
+        try:
+            # Load Kubernetes configuration from the default location
+            config.load_kube_config()
+
+            # Create API clients for Core V1 (Pods) and Apps V1 (Deployments)
+            core_api = client.CoreV1Api()
+            apps_api = client.AppsV1Api()
+
+            logging.debug(
+                f"Getting deployment '{deployment_name}' in namespace '{namespace}' to find its label selector..."
+            )
+
+            # 1. Get the deployment to find its matchLabels
+            try:
+                deployment = apps_api.read_namespaced_deployment(
+                    name=deployment_name, namespace=namespace
+                )
+            except client.ApiException as e:
+                if e.status == 404:
+                    logging.error(
+                        f"Deployment '{deployment_name}' not found in namespace '{namespace}'."
+                    )
+                    return result
+                else:
+                    raise  # Re-raise other API errors
+
+            match_labels = deployment.spec.selector.match_labels
+            if not match_labels:
+                logging.error(
+                    f"Deployment '{deployment_name}' has no 'spec.selector.match_labels' defined."
+                )
+                return result
+
+            # 2. Convert match_labels dict to a label selector string
+            # e.g., {'app': 'my-app', 'role': 'frontend'} -> "app=my-app,role=frontend"
+            label_selector = ",".join([f"{k}={v}" for k, v in match_labels.items()])
+
+            logging.debug(
+                f"Searching for pods with selector '{label_selector}' in namespace '{namespace}'..."
+            )
+
+            # 3. List pods in the namespace using the dynamically found label selector
+            pod_list = core_api.list_namespaced_pod(
+                namespace=namespace, label_selector=label_selector
+            )
+
+            if not pod_list.items:
+                logging.warning(
+                    f"No pods found for deployment '{deployment_name}' with selector '{label_selector}'."
+                )
+                return result
+
+            # 4. Process the found pods
+            for pod in pod_list.items:
+                pod_status = ""
+                if pod.metadata.deletion_timestamp:
+                    pod_status = "Terminating"
+                else:
+                    pod_status = pod.status.phase
+
+                logging.debug(
+                    f"Pods Found: Pod: {pod.metadata.name} | Status: {pod_status}"
+                )
+                pod_info = {"name": pod.metadata.name, "status": pod_status}
+                result.append(pod_info)
+
+        except config.ConfigException:
+            logging.error(
+                "Could not load Kubernetes configuration. Ensure your kubeconfig file is correctly set up."
+            )
+        except client.ApiException as e:
+            logging.error(f"An API error occurred: {e}")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}")
+
+        return result
+
+    @staticmethod
     def get_pod_status_by_ksvc(namespace: str, ksvc_name: str) -> list:
         """Get pod status by namespace and ksvc
 
@@ -626,6 +716,88 @@ class K8sAPI:
         #             f"All pods in ksvc {ksvc}, namespace {namespace} successfully deleted from the cluster."
         #         )
         #         break
+
+    @staticmethod
+    def delete_deployment_svc(svc_name: str, namespace: str):
+        """
+        Deletes a Kubernetes Deployment and Service by name in a given namespace.
+        Uses logging for output.
+
+        Args:
+            svc_name (str): The name of the deployment and service to delete.
+            namespace (str): The namespace of the resources.
+        """
+        # Load Kubernetes configuration from default location (~/.kube/config)
+        try:
+            config.load_kube_config()
+            logging.debug("Kubernetes config loaded successfully.")
+        except config.ConfigException as e:
+            logging.critical(
+                "Could not load kubeconfig. Is it configured correctly? Error: %s", e
+            )
+            return
+
+        # Create API clients
+        try:
+            apps_v1_api = client.AppsV1Api()
+            core_v1_api = client.CoreV1Api()
+            logging.debug("Kubernetes API clients created.")
+        except Exception as e:
+            logging.error(f"Failed to create Kubernetes API clients: {e}")
+            return
+
+        # --- 1. Delete Deployment ---
+        try:
+            logging.info(
+                f"Attempting to delete Deployment '{svc_name}' in namespace '{namespace}'..."
+            )
+            apps_v1_api.delete_namespaced_deployment(
+                name=svc_name,
+                namespace=namespace,
+                body=client.V1DeleteOptions(
+                    propagation_policy="Foreground",  # Ensures dependent pods are deleted first
+                    grace_period_seconds=5,
+                ),
+            )
+            logging.info(f"Deployment '{svc_name}' delete command issued successfully.")
+        except client.ApiException as e:
+            if e.status == 404:
+                logging.warning(
+                    f"Deployment '{svc_name}' not found in namespace '{namespace}'. Nothing to delete."
+                )
+            else:
+                logging.error(
+                    f"Error deleting deployment '{svc_name}': {e.reason}",
+                    exc_info=True,
+                )
+        except Exception as e:
+            logging.error(
+                f"An unexpected error occurred while deleting deployment '{svc_name}': {e}",
+                exc_info=True,
+            )
+
+        # --- 2. Delete Service ---
+        try:
+            logging.info(
+                f"Attempting to delete Service '{svc_name}' in namespace '{namespace}'..."
+            )
+            core_v1_api.delete_namespaced_service(name=svc_name, namespace=namespace)
+            logging.info(f"Service '{svc_name}' delete command issued successfully.")
+        except client.ApiException as e:
+            if e.status == 404:
+                logging.warning(
+                    f"Service '{svc_name}' not found in namespace '{namespace}'. Nothing to delete."
+                )
+            else:
+                logging.error(
+                    f"Error deleting service '{svc_name}': {e.reason}",
+                    exc_info=True,
+                )
+        except Exception as e:
+            logging.error(
+                f"An unexpected error occurred while deleting service '{svc_name}': {e}",
+                exc_info=True,
+            )
 
     @staticmethod
     def get_pods(namespace: str, ksvc: str):

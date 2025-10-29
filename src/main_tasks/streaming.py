@@ -14,6 +14,8 @@ from src.lib import (
     CreateResultFile,
     get_fps_bitrate,
     get_time_to_first_frame,
+    get_time_to_first_frame_warm,
+    query_url,
 )
 from src.prometheus import Prometheus
 
@@ -26,7 +28,9 @@ class StreamingMeasuring:
         self.ksvc_name = config["ksvc_name"]
         self.arch = config["arch"]
         self.image = config["image"]
+        self.k8s_image = config["k8s_image"]
         self.port = config["port"]
+        self.flask_port = config["flask_port"]
         self.namespace = config["namespace"]
         self.hostname = config["hostname"]
         self.host_ip = config["host_ip"]
@@ -108,8 +112,8 @@ class StreamingMeasuring:
                     K8sAPI.deploy_k8s_streaming(
                         svc_name=self.ksvc_name,
                         namespace=self.namespace,
-                        image="docker.io/lazyken/measure-streaming-k8s:v1",
-                        flask_port=5000,
+                        image=self.k8s_image,
+                        flask_port=self.flask_port,
                         stream_port=self.port,
                         hostname=self.hostname,
                         replica=replica,
@@ -121,8 +125,8 @@ class StreamingMeasuring:
                     # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
                     while True:
                         if K8sAPI.all_pods_ready(
-                            pods=K8sAPI.get_pod_status_by_ksvc(
-                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            pods=K8sAPI.get_pod_status_by_deployment(
+                                namespace=self.namespace, deployment_name=self.ksvc_name
                             )
                         ):
                             logging.info("All pods ready!")
@@ -132,36 +136,54 @@ class StreamingMeasuring:
                     time.sleep(self.cool_down_time)
 
                     # 4. Execute ffmpeg command to receive video from source and get time to first frame
-                    for _ in range(self.curl_time):
-                        logging.info("Start catching streaming service")
-
-                        time_to_first_frame = get_time_to_first_frame(
-                            url=f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}"
+                    for i in range(self.curl_time):
+                        logging.info(
+                            f"Start catching streaming service [{i + 1}/{self.curl_time}]"
                         )
 
-                        if time_to_first_frame:
+                        time_to_first_frame = 0
+                        starttime = time.monotonic()
+
+                        query_url(
+                            url=f"http://{self.ksvc_name}.{self.namespace}:{self.flask_port}/stream/start"
+                        )
+
+                        response = get_time_to_first_frame_warm(
+                            url=f"http://{self.ksvc_name}.{self.namespace}:{self.port}/{self.cluster_info.streaming_info.streaming_uri}"
+                        )
+                        time_to_first_frame = time.monotonic() - starttime
+
+                        if response:
                             with open(result_file, mode="a", newline="") as f:
                                 writer = csv.writer(f)
                                 writer.writerow([time_to_first_frame])
-                                logging.debug(
+                                logging.info(
                                     f"Successfully write {time_to_first_frame} into {result_file}"
                                 )
+
+                        time.sleep(2)
+
+                        query_url(
+                            url=f"http://{self.ksvc_name}.{self.namespace}:5000/stream/stop"
+                        )
+
+                        time.sleep(2)
 
                     PlotResult.timeToFirstFrame(
                         result_file=result_file,
                         output_file=f"result/2_1_timeToFirstFrame/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
-                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-                    time.sleep(
-                        2  # Wait for API server to successfully receive delete signal
+                    K8sAPI.delete_deployment_svc(
+                        svc_name=self.ksvc_name, namespace=self.namespace
                     )
-                    K8sAPI.kill_pod_process(
-                        namespace=self.namespace, ksvc=self.ksvc_name, keyword="ffmpeg"
-                    )
+
+                    # Wait for API server to successfully receive delete signal
+                    time.sleep(2)
+
                     while True:
-                        pods = K8sAPI.get_pod_status_by_ksvc(
-                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        pods = K8sAPI.get_pod_status_by_deployment(
+                            namespace=self.namespace, deployment_name=self.ksvc_name
                         )
                         logging.info(
                             f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."

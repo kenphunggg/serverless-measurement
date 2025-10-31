@@ -7,9 +7,9 @@
                 1
             ],
             "ksvc_name": "measure-streaming",
-            "arch": "x86",
-            "image": "docker.io/lazyken/measure-streaming:v3@sha256:e27e18c001aee1f5bd9ac787a856bd0278b2890b1555b992d4e301a1f72c7e7d",
-            "k8s_image": "docker.io/lazyken/measure-streaming-k8s:v3@sha256:98d9beb363f03253e994e3902a3743f88126da226b2c992029a9a83308d7fed3",
+            "arch": "arm64",
+            "image": "docker.io/lazyken/measure-streaming:arm64-v1@sha256:36bcaa15d1f4ca7f65b26dfabdf5f519c9972a4fc273ffce7d9cea72bdddbfe0",
+            "k8s_image": "docker.io/lazyken/measure-streaming-k8s:arm-v3@sha256:6f2f2b4a21a1f63708d55234d062d0c95ef2d0755b9d5edc853e9e70b193803e",
             "port": 8080,
             "flask_port": 5000,
             "namespace": "serverless",

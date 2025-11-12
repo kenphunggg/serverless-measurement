@@ -31,6 +31,9 @@ result/2_3_streaming_prom/*
 result/2_4_timeToFirstFrame_cold/*
 !result/2_4_timeToFirstFrame_cold/.gitkeep
 
+result/3_1_yolo_warm/*
+!result/3_1_yolo_warm/.gitkeep
+
 # Ignore python repos
 __pycache__/
 

@@ -7,6 +7,9 @@ from src import variables as var
 from src.lib import ClusterInfo, DatabaseInfo, Node, PrometheusServer, StreamingInfo
 from src.main_tasks.streaming import StreamingMeasuring
 from src.main_tasks.web_measuring import WebMeasuring
+from src.main_tasks.yolo import YoloMeasuring
+
+CONFIG_FILE = "config/config_yolo.json"
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -25,7 +28,7 @@ if __name__ == "__main__":
     var.reload_var()
 
     # Load the file's content into a dictionary
-    with open("config/config_streaming_test.json", "r") as f:
+    with open(CONFIG_FILE, "r") as f:
         data = json.load(f)
     test_cases = data["test_cases"]
 
@@ -84,7 +87,7 @@ if __name__ == "__main__":
             web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
             # web_measuring.baseline()
             # web_measuring.get_warm_resptime()
-            web_measuring.get_warm_hardware_usage()
+            # web_measuring.get_warm_hardware_usage()
             # web_measuring.get_cold_resptime()
             del web_measuring
 
@@ -100,8 +103,12 @@ if __name__ == "__main__":
             # streaming_measuring.get_cold_timeToFirstFrame()
             del streaming_measuring
 
-        elif test_case["test_case"] == "":
-            pass
+        elif test_case["test_case"] == "yolo":
+            yolo_measuring = YoloMeasuring(config=test_case, cluster_info=my_cluster)
+            yolo_measuring.get_yolo_detection_warm()
+            # yolo_measuring.get_yolo_detection_cold()
+            # yolo_measuring.get_hardware_usage()
+            del yolo_measuring
 
     end_time = datetime.datetime.now()
 

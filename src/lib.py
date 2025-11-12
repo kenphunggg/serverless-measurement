@@ -4,7 +4,7 @@ import re
 import subprocess
 import sys
 import time
-from typing import List
+from typing import Dict, List, Optional, Tuple
 
 import requests
 
@@ -180,6 +180,15 @@ class CreateResultFile:
             header="time_to_first_frame\n",
         )
 
+    @staticmethod
+    def yolo_detection_warm(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="3_1_yolo_warm",
+            nodename=nodename,
+            filename=filename,
+            header="model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",
+        )
+
 
 def get_curl_metrics(url: str) -> dict | None:
     """
@@ -241,6 +250,159 @@ def get_curl_metrics(url: str) -> dict | None:
     except (ValueError, IndexError) as e:
         logging.error(f"Error parsing curl output: {e}")
         return None
+
+
+def get_curl_metrics_and_body(url: str) -> Tuple[Optional[Dict], Optional[str]]:
+    """
+    Executes a curl command and returns the timing metrics as a dictionary
+    and the response body as a string.
+
+    Args:
+        url: The URL to test.
+
+    Returns:
+        A tuple containing (metrics_dict, response_body).
+        (None, None) on failure.
+    """
+
+    # We define the format *precisely* with newlines.
+    # The initial \n is CRITICAL to separate the metrics
+    # from the response body, even if the body has no trailing newline.
+    curl_format = (
+        "\n"  # Ensures a new line before metrics start
+        "time_namelookup:%{time_namelookup}\n"
+        "time_connect:%{time_connect}\n"
+        "time_appconnect:%{time_appconnect}\n"
+        "time_pretransfer:%{time_pretransfer}\n"
+        "time_redirect:%{time_redirect}\n"
+        "time_starttransfer:%{time_starttransfer}\n"
+        "time_total:%{time_total}"  # No final newline needed here
+    )
+
+    # We know this format has 7 metric lines
+    num_metric_lines = 7
+
+    # Set a 10-minute (600 seconds) timeout for the entire operation
+    timeout_seconds = "600"
+    command = [
+        "curl",
+        "--max-time",
+        timeout_seconds,
+        "-s",  # Silent mode
+        # "-o", "/dev/null",  # <-- This line is REMOVED
+        "-w",  # Write-out format
+        curl_format,  # Pass the precise format string
+        url,
+    ]
+
+    try:
+        # Use encoding for reliable text conversion
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=True, encoding="utf-8"
+        )
+
+        # stdout now contains:
+        # 1. The response body
+        # 2. The metrics (at the very end)
+
+        all_output_lines = result.stdout.splitlines()
+
+        if len(all_output_lines) < num_metric_lines:
+            logging.error(
+                f"Error parsing curl output: not enough lines. Got: {result.stdout}"
+            )
+            return None, None
+
+        # Separate the body from the metrics
+        body_lines = all_output_lines[:-num_metric_lines]
+        metric_lines = all_output_lines[-num_metric_lines:]
+
+        # Re-join the body. .splitlines() drops newlines, so we add them back.
+        response_body = "\n".join(body_lines)
+
+        # Parse the metrics into a dictionary
+        metrics_dict = {}
+        for line in metric_lines:
+            key, value = line.split(":", 1)
+            metrics_dict[key.strip()] = float(value)
+
+        logging.info("Collecting metrics and body successfully!")
+        return metrics_dict, response_body
+
+    except FileNotFoundError:
+        logging.error(
+            "Error: 'curl' command not found. Please ensure it is installed and in your PATH."
+        )
+        return None, None
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error executing curl command for {url}: {e.stderr}")
+        return None, None
+    except (ValueError, IndexError) as e:
+        # Log the end of the output, which is where parsing failed
+        logging.error(
+            f"Error parsing curl output: {e}. Output tail: {result.stdout[-200:]}"
+        )
+        return None, None
+
+
+def query_url_post_image(url: str, image_path: str) -> dict | None:
+    """
+    Makes a POST request with an image file and retries on failure.
+
+    Args:
+        url: The url you want to query (e.g., the /predict endpoint).
+        image_path: The local path to the image file to send.
+
+    Returns:
+        A dictionary with the JSON data on success, or None on failure.
+    """
+    logging.debug(f"Requesting URL: {url} with image {image_path}")
+
+    while True:
+        try:
+            # Open the file in binary read mode ('rb')
+            with open(image_path, "rb") as f:
+                # 'image' is the key your Flask server will look for
+                # in request.files. You can change 'image' to 'file'
+                # or whatever your API expects.
+                files = {"image": f}
+
+                # Use requests.post() and pass the files
+                response = requests.post(url, files=files)
+
+            # Raise an exception for bad status codes (like 4xx or 5xx)
+            response.raise_for_status()
+
+            data = response.json()
+            logging.debug(f"Successfully received response: {data}")
+            return data  # Return the parsed JSON data
+
+        except FileNotFoundError:
+            # If the image isn't found, stop retrying.
+            logging.error(f"Image file not found at {image_path}. Stopping.")
+            return None
+
+        except requests.exceptions.ConnectionError as e:
+            # Network-level error, retry
+            logging.error(f"A connection error occurred: {e}. Retrying...")
+            time.sleep(2)
+
+        except requests.exceptions.HTTPError as e:
+            # Server returned a 4xx or 5xx error, retry
+            logging.error(f"HTTP error: {e}. Retrying...")
+            logging.error(f"Response text: {response.text}")
+            time.sleep(2)
+
+        except requests.exceptions.JSONDecodeError as e:
+            # Server response wasn't valid JSON, retry
+            logging.error(f"Failed to decode JSON: {e}. Retrying...")
+            logging.error(f"Response text: {response.text}")
+            time.sleep(2)
+
+        except requests.exceptions.RequestException as e:
+            # Catch any other request-related errors
+            logging.error(f"An unexpected error occurred: {e}. Retrying...")
+            time.sleep(2)
 
 
 def get_time_to_first_frame_warm(
@@ -547,32 +709,39 @@ def get_fps_bitrate(stream_url, num_samples=100):
     return fps_samples
 
 
-def query_url(url: str) -> dict | None:
+def query_url(url: str, max_retries: int = 5) -> dict | None:
     """
-    Makes a GET request and returns the response data as a dictionary.
-
-    Args:
-        url: The url you want to query.
-
-    Returns:
-        A dictionary with the JSON data on success, or None on failure.
+    Makes a GET request with a retry limit and returns data or None.
     """
+    logging.info(f"Requesting URL: {url}")
 
-    logging.debug(f"Requesting URL: {url}")
-
-    # start_time = time.time()
-    while True:
+    retry_count = 0
+    while retry_count < max_retries:
         try:
-            response = requests.get(url)
-            response.raise_for_status()
-
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()  # Check for 4xx/5xx errors
             data = response.json()
-            logging.debug(f"Successfully received response: {data}")
-            return data  # Return the parsed JSON data
+            logging.info(f"Successfully received response: {data}")
+            return data  # Success!
+
+        except requests.exceptions.JSONDecodeError as e:
+            logging.error(
+                f"Failed to decode JSON: {e}. Retrying ({retry_count + 1}/{max_retries})..."
+            )
+            logging.error(f"Server response text: {response.text}")
 
         except requests.exceptions.RequestException as e:
-            logging.error(f"An error occurred: {e}")
-            time.sleep(2)
+            logging.error(
+                f"An unexpected error occurred: {e}. Retrying ({retry_count + 1}/{max_retries})..."
+            )
+
+        retry_count += 1
+        time.sleep(2)
+
+    logging.error(
+        f"Failed to get a valid response from {url} after {max_retries} attempts."
+    )
+    return None  # Return None on total failure
 
 
 def create_curl_result_file(nodename: str, filename: str) -> str:

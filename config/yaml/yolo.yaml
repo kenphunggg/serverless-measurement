@@ -1,0 +1,48 @@
+# apiVersion: serving.knative.dev/v1
+# kind: Service
+# metadata:
+#   name: measure-yolo
+# spec:
+#   template:
+#     metadata:
+#       # --- ADD THIS BLOCK ---
+#       # This annotation sets the minimum number of pods to 1
+#       annotations:
+#         autoscaling.knative.dev/minScale: "1"
+#     spec:
+#       # --- ADD THIS BLOCK ---
+#       # This forces pods to run on nodes with the matching label
+#       nodeSelector:
+#         kubernetes.io/hostname: "cloud-node"
+#       containers:
+#         - image: docker.io/lazyken/measure-yolo:v1
+#           ports:
+#             - containerPort: 8080
+#           env:
+#             - name: RTMP_STREAM_URL
+#               value: '192.168.17.129:2000'
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: measure-yolo
+  namespace: serverless
+spec:
+  template:
+    metadata:
+      # --- ADD THIS BLOCK ---
+      # This annotation sets the minimum number of pods to 1
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+    spec:
+      # --- ADD THIS BLOCK ---
+      # This forces pods to run on nodes with the matching label
+      nodeSelector:
+        kubernetes.io/hostname: "cloud-node"
+      containers:
+        - image: docker.io/lazyken/measure-yolo:v1@sha256:4a70b8bd9b0686821f0d5bcf6d8cf8e0d0563657693769051c75860a67e8a120
+          ports:
+            - containerPort: 8080
+          env:
+            - name: RTMP_STREAM_URL
+              value: '192.168.17.129:2000'

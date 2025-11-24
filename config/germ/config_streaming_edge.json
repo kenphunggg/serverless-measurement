@@ -2,20 +2,20 @@
     "test_cases": [
         {
             "test_case": "streaming",
-            "repetition": 5,
+            "repetition": 2,
             "replicas": [
                 1
             ],
-            "ksvc_name": "measure-streaming",
+            "ksvc_name": "measure-streaming-edge",
             "arch": "arm64",
-            "image": "docker.io/lazyken/measure-streaming:arm64-v1@sha256:36bcaa15d1f4ca7f65b26dfabdf5f519c9972a4fc273ffce7d9cea72bdddbfe0",
-            "k8s_image": "docker.io/lazyken/measure-streaming-k8s:arm-v3@sha256:6f2f2b4a21a1f63708d55234d062d0c95ef2d0755b9d5edc853e9e70b193803e",
-            "port": 8080,
+            "image": "docker.io/lazyken/measure-streaming:v1@sha256:c98168647626ad432dffad085c1269508b519a5f52232949d3d8a91d9b519bfe",
+            "k8s_image": "docker.io/lazyken/measure-streaming:v2@sha256:735536871c64e7d08c0e63b1de3b490f7f97079767ea19dac0a6896b988deb4c",
+            "port": 1935,
             "flask_port": 5000,
             "namespace": "serverless",
             "hostname": "ubuntu",
             "host_ip": "172.16.42.11",
-            "cool_down_time": 30,
+            "cool_down_time": 20,
             "curl_time": 60,
             "detection_time": 300,
             "resource_requests": [
@@ -75,7 +75,7 @@
         }
     ],
     "prometheus": {
-        "server_ip": "172.16.42.13",
+        "server_ip": "prometheus-grafana-stack-k-prometheus.monitoring.svc.cluster.local",
         "port": 9090,
         "interface": "enp0s25"
     },
@@ -100,11 +100,12 @@
     },
     "streaming_info": {
         "source_ip": "172.16.42.14:2000",
-        "stream_uri": "live/playlist.m3u8"
+        "stream_uri": "live/stream",
+        "resolution": "1280:720"
     },
     "database_info": {
         "db_host": "172.16.42.14",
         "db_user": "thai",
-        "db_password": "1"
+        "db_password": "pass"
     }
 }

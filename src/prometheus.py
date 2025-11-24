@@ -1,9 +1,8 @@
-import json
-from prometheus_api_client import PrometheusConnect
-from src.lib import ClusterInfo, Node
-
 import logging
 
+from prometheus_api_client import PrometheusConnect
+
+from src.lib import ClusterInfo
 
 # with open("config/config.json", "r") as f:
 #     data = json.load(f)
@@ -55,8 +54,7 @@ class Prometheus:
             f"irate(node_cpu_seconds_total{{mode='idle', instance='{instance}:9100'}}[1m])"
             f") * 100)"
         )
-        
-        
+
         return Prometheus.query(query=query_cpu_url, prom_server=prom_server)
 
     def queryGPU(instance: str, prom_server: str):
@@ -86,13 +84,10 @@ class Prometheus:
             f" / node_memory_MemTotal_bytes{{job='node_exporters', instance='{instance}:9100'}})"
             f" * 100"
         )
-        
-        
+
         return Prometheus.query(query=query_mem_url, prom_server=prom_server)
 
-    def queryNetworkIn(
-        instance: str, cluster_info: ClusterInfo, prom_server: str 
-    ):
+    def queryNetworkIn(instance: str, cluster_info: ClusterInfo, prom_server: str):
         """
         query mem usage in (%)
         Args:
@@ -111,12 +106,10 @@ class Prometheus:
             f"rate(node_network_receive_bytes_total{{device='{interface}', instance='{instance}:9100', job='node_exporters'}}[1m])"
             f" / (1024 * 1024)"
         )
-        
+
         return Prometheus.query(query=query_network_receive, prom_server=prom_server)
 
-    def queryNetworkOut(
-        instance: str, cluster_info: ClusterInfo, prom_server: str 
-    ):
+    def queryNetworkOut(instance: str, cluster_info: ClusterInfo, prom_server: str):
         """
         query mem usage in (%)
         Args:
@@ -145,16 +138,11 @@ class Prometheus:
             namespace (str): pod namespace
         """
 
-
         # Query for real-time CPU usage for ALL pods in the namespace
-        query_cpu_url = (
-            f"(sum(irate(container_cpu_usage_seconds_total{{namespace='{namespace}', "
-            f"image!=''}}[1m])) by (pod)) * 1000"
-        )
-        
-        
+        query_cpu_url = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!=""}}[5m])) by (pod)'
+
         return Prometheus.query(query=query_cpu_url, prom_server=prom_server)
-    
+
     @staticmethod
     def queryPodMemory(namespace: str, prom_server: str):
         """
@@ -163,16 +151,11 @@ class Prometheus:
             namespace (str): namespace of pod
         """
 
-
         # Query for real-time memory usage for ALL pods in the namespace
-        query_memory_url = (
-            f"(sum(container_memory_working_set_bytes{{namespace='{namespace}', "
-            f"image!=''}}) by (pod)) / (1024 * 1024)"
-        )
-        
-        
+        query_memory_url = f'sum(container_memory_usage_bytes{{namespace="{namespace}", container!=""}}) by (pod)'
+
         return Prometheus.query(query=query_memory_url, prom_server=prom_server)
-    
+
     @staticmethod
     def queryPodNetworkIn(namespace: str, prom_server: str):
         """
@@ -181,13 +164,11 @@ class Prometheus:
             namespace (str): pod namespace
         """
 
-
         # Query for real-time CPU usage for ALL pods in the namespace
-        query_net_in_url = (
-            f"(sum(irate(container_network_receive_bytes_total{{namespace='{namespace}'}}[1m])) by (pod)) / (1024 * 1024)"
-        )
+        query_net_in_url = f'sum(rate(container_network_receive_bytes_total{{namespace="{namespace}"}}[5m])) by (pod)'
+
         return Prometheus.query(query=query_net_in_url, prom_server=prom_server)
-    
+
     @staticmethod
     def queryPodNetworkOut(namespace: str, prom_server: str):
         """
@@ -197,8 +178,6 @@ class Prometheus:
         """
 
         # Query for real-time network out for ALL pods in the namespace
-        query_net_out_url = (
-            f"(sum(irate(container_network_transmit_bytes_total{{namespace='{namespace}'}}[1m])) by (pod)) / (1024 * 1024)"
-        )
-        
+        query_net_out_url = f'sum(rate(container_network_transmit_bytes_total{{namespace="{namespace}"}}[5m])) by (pod)'
+
         return Prometheus.query(query=query_net_out_url, prom_server=prom_server)

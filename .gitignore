@@ -34,6 +34,9 @@ result/2_4_timeToFirstFrame_cold/*
 result/3_1_yolo_warm/*
 !result/3_1_yolo_warm/.gitkeep
 
+result/3_2_yolo_cold/*
+!result/3_2_yolo_cold/.gitkeep
+
 # Ignore python repos
 __pycache__/
 

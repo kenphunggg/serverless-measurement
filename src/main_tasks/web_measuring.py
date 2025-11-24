@@ -3,6 +3,7 @@ import logging
 import time
 
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 
 from src import variables as var
 from src.k8sAPI import K8sAPI
@@ -184,121 +185,121 @@ class WebMeasuring:
 
         for replica in self.replicas:
             for rep in range(1, self.repetition + 1, 1):
-                for resource in self.resource_requests:
-                    logging.info(
-                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
-                    )
+                # for resource in self.resource_requests:
+                logging.info(
+                    f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}"
+                )
 
-                    # 1. Create result file
-                    result_file = CreateResultFile.web_resource(
-                        nodename=self.hostname,
-                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
-                    )
+                # 1. Create result file
+                result_file = CreateResultFile.web_resource(
+                    nodename=self.hostname,
+                    filename=f"{self.arch}_{var.generate_file_time}_rep{rep}.csv",
+                )
 
-                    # 2. Deploy ksvc for measuring
-                    K8sAPI.deploy_ksvc_web(
-                        ksvc_name=self.ksvc_name,
+                # 2. Deploy ksvc for measuring
+                K8sAPI.deploy_ksvc_web(
+                    ksvc_name=self.ksvc_name,
+                    namespace=self.namespace,
+                    image=self.image,
+                    port=self.port,
+                    hostname=self.hostname,
+                    window_time=100,
+                    min_scale=replica,
+                    max_scale=replica,
+                    database_info=self.cluster_info.database_info,
+                    # cpu=resource["cpu"],
+                    # memory=resource["memory"],
+                )
+
+                # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                while True:
+                    if K8sAPI.all_pods_ready(
+                        pods=K8sAPI.get_pod_status_by_ksvc(
+                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        )
+                    ):
+                        logging.info("All pods ready!")
+                        break
+                    logging.info("Waiting for pods to be ready ...")
+                    time.sleep(2)
+
+                time.sleep(self.cool_down_time)
+
+                # 4. Query url on app to trigger task then query Prometheus to get CPU and Mem usage of that action for *detection_time* seconds
+                logging.info(
+                    "Start query prometheus to get hardware information when running web service"
+                )
+                start_time = time.time()
+                url = f"http://{self.ksvc_name}.{self.namespace}/list-students?duration={self.detection_time}"
+                query_url(url=url)
+
+                while time.time() - start_time < self.detection_time:
+                    logging.info("Collecting prometheus metrics ...")
+                    # cpu = Prometheus.queryCPU(
+                    #     instance=self.host_ip,
+                    #     prom_server=self.cluster_info.prometheus_ip,
+                    # )
+                    # mem = Prometheus.queryMem(
+                    #     instance=self.host_ip,
+                    #     prom_server=self.cluster_info.prometheus_ip,
+                    # )
+                    # networkIn = Prometheus.queryNetworkIn(
+                    #     instance=self.host_ip,
+                    #     cluster_info=self.cluster_info,
+                    #     prom_server=self.cluster_info.prometheus_ip,
+                    # )
+                    # networkOut = Prometheus.queryNetworkOut(
+                    #     instance=self.host_ip,
+                    #     cluster_info=self.cluster_info,
+                    #     prom_server=self.cluster_info.prometheus_ip,
+                    # )
+
+                    cpu = Prometheus.queryPodCPU(
                         namespace=self.namespace,
-                        image=self.image,
-                        port=self.port,
-                        hostname=self.hostname,
-                        window_time=100,
-                        min_scale=0,
-                        max_scale=replica,
-                        database_info=self.cluster_info.database_info,
-                        cpu=resource["cpu"],
-                        memory=resource["memory"],
+                        prom_server=self.cluster_info.prometheus_ip,
+                    )
+                    mem = Prometheus.queryPodMemory(
+                        namespace=self.namespace,
+                        prom_server=self.cluster_info.prometheus_ip,
+                    )
+                    networkIn = Prometheus.queryPodNetworkIn(
+                        namespace=self.namespace,
+                        prom_server=self.cluster_info.prometheus_ip,
+                    )
+                    networkOut = Prometheus.queryPodNetworkOut(
+                        namespace=self.namespace,
+                        prom_server=self.cluster_info.prometheus_ip,
                     )
 
-                    # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
-                    while True:
-                        if K8sAPI.all_pods_ready(
-                            pods=K8sAPI.get_pod_status_by_ksvc(
-                                namespace=self.namespace, ksvc_name=self.ksvc_name
-                            )
-                        ):
-                            logging.info("All pods ready!")
-                            break
-                        logging.info("Waiting for pods to be ready ...")
-                        time.sleep(2)
-
-                    time.sleep(self.cool_down_time)
-
-                    # 4. Query url on app to trigger task then query Prometheus to get CPU and Mem usage of that action for *detection_time* seconds
-                    logging.info(
-                        "Start query prometheus to get hardware information when running web service"
+                    with open(result_file, mode="a", newline="") as f:
+                        result_value = [
+                            cpu[0],
+                            cpu[1],
+                            mem[1],
+                            networkIn[1],
+                            networkOut[1],
+                        ]
+                        writer = csv.writer(f)
+                        writer.writerow(result_value)
+                    logging.debug(
+                        f"Successfully write {result_value} into {result_file}"
                     )
-                    start_time = time.time()
-                    url = f"http://{self.ksvc_name}.{self.namespace}/list-students?duration={self.detection_time}"
-                    query_url(url=url)
+                    logging.info("Collecting prometheus metrics successfully!")
+                    time.sleep(0.5)
 
-                    while time.time() - start_time < self.detection_time:
-                        logging.info("Collecting prometheus metrics ...")
-                        # cpu = Prometheus.queryCPU(
-                        #     instance=self.host_ip,
-                        #     prom_server=self.cluster_info.prometheus_ip,
-                        # )
-                        # mem = Prometheus.queryMem(
-                        #     instance=self.host_ip,
-                        #     prom_server=self.cluster_info.prometheus_ip,
-                        # )
-                        # networkIn = Prometheus.queryNetworkIn(
-                        #     instance=self.host_ip,
-                        #     cluster_info=self.cluster_info,
-                        #     prom_server=self.cluster_info.prometheus_ip,
-                        # )
-                        # networkOut = Prometheus.queryNetworkOut(
-                        #     instance=self.host_ip,
-                        #     cluster_info=self.cluster_info,
-                        #     prom_server=self.cluster_info.prometheus_ip,
-                        # )
+                # 5. Plot result
+                PlotResult.plot_hardware(
+                    result_file=result_file,
+                    output_file=f"result/1_2_resource_web/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
+                )
 
-                        cpu = Prometheus.queryPodCPU(
-                            instance=self.host_ip,
-                            prom_server=self.cluster_info.prometheus_ip,
-                        )
-                        mem = Prometheus.queryPodMemory(
-                            instance=self.host_ip,
-                            prom_server=self.cluster_info.prometheus_ip,
-                        )
-                        networkIn = Prometheus.queryPodNetworkIn(
-                            namespace=self.namespace,
-                            prom_server=self.cluster_info.prometheus_ip,
-                        )
-                        networkOut = Prometheus.queryPodNetworkOut(
-                            namespace=self.namespace,
-                            prom_server=self.cluster_info.prometheus_ip,
-                        )
+                logging.info(
+                    "End query prometheus to get hardware information when running streaming serviced"
+                )
 
-                        with open(result_file, mode="a", newline="") as f:
-                            result_value = [
-                                cpu[0],
-                                cpu[1],
-                                mem[1],
-                                networkIn[1],
-                                networkOut[1],
-                            ]
-                            writer = csv.writer(f)
-                            writer.writerow(result_value)
-                        logging.debug(
-                            f"Successfully write {result_value} into {result_file}"
-                        )
-                        logging.info("Collecting prometheus metrics successfully!")
-                        time.sleep(0.5)
-
-                    # 5. Plot result
-                    PlotResult.plot_hardware(
-                        result_file=result_file,
-                        output_file=f"result/1_2_resource_web/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
-                    )
-
-                    logging.info(
-                        "End query prometheus to get hardware information when running streaming serviced"
-                    )
-
-                    # 6. Delete ksvc
-                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
-                    time.sleep(self.cool_down_time)
+                # 6. Delete ksvc
+                K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                time.sleep(self.cool_down_time)
 
         logging.info("End scenario: Collecting CPU/RAM usage when pod in warm status")
 
@@ -563,15 +564,11 @@ class PlotResult:
 
     @staticmethod
     def plot_hardware(result_file, output_file):
-        """
-        Reads hardware usage data from a CSV and generates a 2x2 boxplot grid
-        for CPU, Memory, Network In, and Network Out.
-        """
         logging.info("Start plot hardware usage of web service")
         cpu_data = []
         mem_data = []
         network_in_data = []
-        network_out_data = []  # <-- Added list for Network Out data
+        network_out_data = []
 
         try:
             with open(result_file, "r", newline="") as file:
@@ -583,65 +580,68 @@ class PlotResult:
                             cpu_data.append(float(row[1]))
                             mem_data.append(float(row[2]))
                             network_in_data.append(float(row[3]))
-                            # Read the 5th column (index 4) for Network Out
                             network_out_data.append(float(row[4]))
                         except (ValueError, IndexError) as e:
-                            logging.warning(
-                                f"Skipping invalid row or value: {row}. Error: {e}"
-                            )
-        except FileNotFoundError:
-            logging.error(f"The file '{result_file}' was not found.")
-            return
-        except StopIteration:
-            logging.error(
-                f"The CSV file '{result_file}' is empty or has only a header."
-            )
-            return
+                            logging.warning(f"Skipping invalid row: {row}. Error: {e}")
+
         except Exception as e:
-            logging.error(f"An unexpected error occurred: {e}")
+            logging.error(f"Error reading file: {e}")
             return
 
-        # Check if any data was actually loaded
         if not all([cpu_data, mem_data, network_in_data, network_out_data]):
-            logging.error("One or more data series is empty. Cannot generate plot.")
+            logging.error("Data series empty.")
             return
 
-        # --- UPGRADED PLOTTING SECTION ---
-        # Change layout to a 2x2 grid for better readability
-        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
-        fig.suptitle(
-            "Streaming Service Resource Usage",
-            fontsize=18,
-            fontweight="bold",
-        )
+        # --- 1. DEFINE THE FORMATTER ---
+        def human_readable_format(x, pos):
+            """
+            Converts raw numbers to K, M, G, T units.
+            x: value, pos: tick position (required by matplotlib)
+            """
+            if x >= 1e12:
+                return f"{x * 1e-12:.1f}T"
+            elif x >= 1e9:
+                return f"{x * 1e-9:.1f}G"
+            elif x >= 1e6:
+                return f"{x * 1e-6:.1f}M"
+            elif x >= 1e3:
+                return f"{x * 1e-3:.1f}K"
+            return f"{x:.0f}"
 
-        # Plot 1: CPU Usage (Top-Left)
+        # Create the formatter object
+        formatter = FuncFormatter(human_readable_format)
+
+        # --- PLOTTING ---
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
+        fig.suptitle("Streaming Service Resource Usage", fontsize=18, fontweight="bold")
+
+        # Plot 1: CPU Usage (Usually kept as raw numbers for Cores)
         axes[0, 0].boxplot(cpu_data)
         axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
-        axes[0, 0].set_ylabel("Usage (%)")
+        axes[0, 0].set_ylabel("Usage (Core)")
         axes[0, 0].set_xticklabels(["CPU"])
 
-        # Plot 2: Memory Usage (Top-Right)
+        # Plot 2: Memory Usage (Apply Formatter)
         axes[0, 1].boxplot(mem_data)
         axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
-        axes[0, 1].set_ylabel("Usage (%)")
+        axes[0, 1].set_ylabel("Usage (Bytes)")
         axes[0, 1].set_xticklabels(["Memory"])
+        axes[0, 1].yaxis.set_major_formatter(formatter)  # <--- Applied here
 
-        # Plot 3: Network In Traffic (Bottom-Left)
+        # Plot 3: Network In (Apply Formatter)
         axes[1, 0].boxplot(network_in_data)
         axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
-        axes[1, 0].set_ylabel("Traffic (MBps)")
+        axes[1, 0].set_ylabel("Traffic (Bps)")
         axes[1, 0].set_xticklabels(["Network In"])
+        axes[1, 0].yaxis.set_major_formatter(formatter)  # <--- Applied here
 
-        # Plot 4: Network Out Traffic (Bottom-Right) - NEW PLOT
+        # Plot 4: Network Out (Apply Formatter)
         axes[1, 1].boxplot(network_out_data)
         axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
-        axes[1, 1].set_ylabel("Traffic (MBps)")
+        axes[1, 1].set_ylabel("Traffic (Bps)")
         axes[1, 1].set_xticklabels(["Network Out"])
+        axes[1, 1].yaxis.set_major_formatter(formatter)  # <--- Applied here
 
-        # Adjust layout and save the figure
-        plt.tight_layout(
-            rect=[0, 0.03, 1, 0.95]
-        )  # Adjust rect to make space for suptitle
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         plt.savefig(output_file)
         logging.info(f"Plot successfully saved to {output_file}")

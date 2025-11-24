@@ -349,12 +349,11 @@ class K8sAPI:
                 "namespace": namespace,
             },
             "spec": {
-                "replicas": replica,  # Updated variable
+                "replicas": replica,
                 "selector": {"matchLabels": {"app": svc_name}},
                 "template": {
                     "metadata": {"labels": {"app": svc_name}},
                     "spec": {
-                        # --- nodeSelector is now included ---
                         "nodeSelector": {"kubernetes.io/hostname": hostname},
                         "containers": [
                             {
@@ -363,14 +362,35 @@ class K8sAPI:
                                 "env": [
                                     {
                                         "name": "SOURCE_IP",
-                                        # This uses the streaming_source variable passed to the function
                                         "value": streaming_info.streaming_source,
-                                    }
+                                    },
+                                    {
+                                        "name": "SCALE_VALUE",
+                                        # Assuming streaming_info has a .resolution attribute
+                                        "value": streaming_info.streaming_resolution, 
+                                    },
                                 ],
                                 "ports": [
                                     {"name": "api", "containerPort": flask_port},
-                                    {"name": "hls", "containerPort": stream_port},
+                                    {"name": "rtmp", "containerPort": stream_port},
                                 ],
+                                # --- NEW: Probes added here ---
+                                "readinessProbe": {
+                                    "httpGet": {
+                                        "path": "/stream/status",
+                                        "port": "api",
+                                    },
+                                    "initialDelaySeconds": 15,
+                                    "periodSeconds": 10,
+                                },
+                                "livenessProbe": {
+                                    "httpGet": {
+                                        "path": "/stream/status",
+                                        "port": "api",
+                                    },
+                                    "initialDelaySeconds": 30,
+                                    "periodSeconds": 20,
+                                },
                             }
                         ],
                     },
@@ -378,18 +398,24 @@ class K8sAPI:
             },
         }
 
+        # --- CPU and Memory Logic (Preserved) ---
         if cpu != 0 and memory != 0:
             resource_settings = {
                 "limits": {
-                    "cpu": cpu,
-                    "memory": memory,
+                    "cpu": f"{cpu}",  # Usually passed as millicores in int, formatted to string
+                    "memory": f"{memory}", # Usually passed as Mi in int
                 },
             }
+            # In case you pass raw strings, remove the f-string formatting above
+            # strictly following your previous logic:
+            if isinstance(cpu, int): resource_settings["limits"]["cpu"] = cpu
+            if isinstance(memory, int): resource_settings["limits"]["memory"] = memory
 
             deployment_config["spec"]["template"]["spec"]["containers"][0][
                 "resources"
             ] = resource_settings
 
+        # --- Document 2: Service Dictionary ---
         service_config = {
             "apiVersion": "v1",
             "kind": "Service",
@@ -401,14 +427,14 @@ class K8sAPI:
                     {
                         "name": "api",
                         "protocol": "TCP",
-                        "port": flask_port,  # Use your function variable
+                        "port": flask_port,
                         "targetPort": "api",
                     },
                     {
-                        "name": "hls",
+                        "name": "rtmp", # Updated from 'hls' to 'rtmp' to match Deployment
                         "protocol": "TCP",
-                        "port": stream_port,  # Use your function variable
-                        "targetPort": "hls",
+                        "port": stream_port,
+                        "targetPort": "rtmp",
                     },
                 ],
             },
@@ -492,7 +518,7 @@ class K8sAPI:
                     logging.info("Deployment '%s' created.", api_response.metadata.name)
                 except ApiException:
                     # Replaced print with logger.exception
-                    logging.error("Error creating deployment '%s'", svc_name)
+                    logging.error("Error creating deployment '%s'. Status: %s, Reason: %s", svc_name, e.status, e.body)
             else:
                 # Other API error
                 # Replaced print with logger.exception
@@ -524,7 +550,7 @@ class K8sAPI:
                     logging.info("Service '%s' created.", api_response.metadata.name)
                 except ApiException:
                     # Replaced print with logger.exception
-                    logging.error("Error creating service '%s'", svc_name)
+                    logging.error("Error creating service '%s'. Status: %s, Reason: %s", svc_name, e.status, e.body)
             else:
                 # Other API error
                 # Replaced print with logger.exception

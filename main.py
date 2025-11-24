@@ -9,7 +9,7 @@ from src.main_tasks.streaming import StreamingMeasuring
 from src.main_tasks.web_measuring import WebMeasuring
 from src.main_tasks.yolo import YoloMeasuring
 
-CONFIG_FILE = "config/config_yolo.json"
+CONFIG_FILE = "config/config_streaming.json"
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -61,6 +61,7 @@ if __name__ == "__main__":
     streaming_info = StreamingInfo(
         streaming_source=streaming_info_json["source_ip"],
         streaming_uri=streaming_info_json["stream_uri"],
+        streaming_resolution=streaming_info_json["resolution"]
     )
 
     prom_server_json = data["prometheus"]
@@ -87,7 +88,7 @@ if __name__ == "__main__":
             web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
             # web_measuring.baseline()
             # web_measuring.get_warm_resptime()
-            # web_measuring.get_warm_hardware_usage()
+            web_measuring.get_warm_hardware_usage()
             # web_measuring.get_cold_resptime()
             del web_measuring
 
@@ -97,16 +98,16 @@ if __name__ == "__main__":
                 config=test_case, cluster_info=my_cluster
             )
             # streaming_measuring.baseline()
-            streaming_measuring.get_warm_timeToFirstFrame()
-            # streaming_measuring.get_fps()
+            # streaming_measuring.get_warm_timeToFirstFrame()
+            streaming_measuring.get_fps()
             # streaming_measuring.get_hardware_resource()
             # streaming_measuring.get_cold_timeToFirstFrame()
             del streaming_measuring
 
         elif test_case["test_case"] == "yolo":
             yolo_measuring = YoloMeasuring(config=test_case, cluster_info=my_cluster)
-            yolo_measuring.get_yolo_detection_warm()
-            # yolo_measuring.get_yolo_detection_cold()
+            # yolo_measuring.get_yolo_detection_warm()
+            yolo_measuring.get_yolo_detection_cold()
             # yolo_measuring.get_hardware_usage()
             del yolo_measuring
 

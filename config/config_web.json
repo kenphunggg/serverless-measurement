@@ -1,23 +1,21 @@
 {
     "test_cases": [
         {
-            "test_case": "streaming",
+            "test_case": "web",
             "repetition": 2,
             "replicas": [
                 1
             ],
-            "ksvc_name": "measure-streaming",
+            "ksvc_name": "measure-web",
             "arch": "x86",
-            "image": "docker.io/lazyken/measure-streaming:v3@sha256:e27e18c001aee1f5bd9ac787a856bd0278b2890b1555b992d4e301a1f72c7e7d",
-            "k8s_image": "docker.io/lazyken/measure-streaming-k8s:v3@sha256:98d9beb363f03253e994e3902a3743f88126da226b2c992029a9a83308d7fed3",
-            "port": 8080,
-            "flask_port": 5000,
+            "image": "docker.io/lazyken/measure-app:v2@sha256:b391d7ef71ec0812c05fd2d06973103ee95b30c842c4ce4d375f55b36ca19a4a",
+            "port": 5000,
             "namespace": "serverless",
             "hostname": "cloud-node",
             "host_ip": "192.168.17.130",
             "cool_down_time": 30,
-            "curl_time": 10,
-            "detection_time": 60,
+            "curl_time": 2,
+            "detection_time": 10,
             "resource_requests": [
                 {
                     "cpu": 0,
@@ -25,13 +23,13 @@
                 },
                 {
                     "cpu": "100m",
-                    "memory": "2Gi"
+                    "memory": "128Mi"
                 }
             ]
         }
     ],
     "prometheus": {
-        "server_ip": "localhost",
+        "server_ip": "prometheus-grafana-stack-k-prometheus.monitoring.svc.cluster.local",
         "port": 9090,
         "interface": "ens33"
     },
@@ -56,7 +54,8 @@
     },
     "streaming_info": {
         "source_ip": "192.168.17.130:2000",
-        "stream_uri": "live/playlist.m3u8"
+        "stream_uri": "live/stream",
+        "resolution": "1280:720"
     },
     "database_info": {
         "db_host": "192.168.17.130",

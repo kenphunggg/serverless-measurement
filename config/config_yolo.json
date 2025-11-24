@@ -8,7 +8,7 @@
             ],
             "ksvc_name": "measure-yolo",
             "arch": "x86",
-            "image": "docker.io/lazyken/measure-yolo:v1@sha256:6180cd7bd61637101c258d98da75a24822008ecddb4dea6fcf1122c856599bd9",
+            "image": "docker.io/lazyken/measure-yolo:v1@sha256:309ec1bbb8b435b007a035ab5de0f47ef2386f46f1ff50f8b82deab25d64ec5e",
             "rtmp_stream_url": "192.168.17.129:2000",
             "port": 8080,
             "namespace": "serverless",
@@ -19,12 +19,8 @@
             "detection_time": 60,
             "resource_requests": [
                 {
-                    "cpu": 0,
-                    "memory": 0
-                },
-                {
-                    "cpu": "100m",
-                    "memory": "2Gi"
+                    "cpu": "300m",
+                    "memory": "3Gi"
                 }
             ]
         }
@@ -55,7 +51,8 @@
     },
     "streaming_info": {
         "source_ip": "192.168.17.130:2000",
-        "stream_uri": "live/playlist.m3u8"
+        "stream_uri": "live/stream",
+        "resolution": "1280:720"
     },
     "database_info": {
         "db_host": "192.168.17.130",

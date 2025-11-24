@@ -7,19 +7,40 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/window: 100s
-        autoscaling.knative.dev/min-scale: '1'
+        autoscaling.knative.dev/min-scale: '0'
         autoscaling.knative.dev/max-scale: '1'
+        autoscaling.knative.dev/window: "10s"
     spec:
+      nodeSelector:
+        kubernetes.io/hostname: cloud-node
       containers:
-      - image: docker.io/lazyken/measure-streaming:v3@sha256:e27e18c001aee1f5bd9ac787a856bd0278b2890b1555b992d4e301a1f72c7e7d
+      - image: docker.io/lazyken/measure-streaming:v1@sha256:c98168647626ad432dffad085c1269508b519a5f52232949d3d8a91d9b519bfe
         ports:
-        - containerPort: 8080
+        - containerPort: 1935
+        readinessProbe:
+          tcpSocket:
+            port: 1935
+          initialDelaySeconds: 5
+          periodSeconds: 5
         env:
         - name: SOURCE_IP
           value: "192.168.17.130:2000"
-        resources:
-          limits:
-            cpu: "100m"
-      nodeSelector:
-        kubernetes.io/hostname: cloud-node
+        - name: SCALE_VALUE
+          value: "1280x720"
+        - name: RTMP_TARGET
+          value: "rtmp://0.0.0.0:1935/live/stream"
+
+---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: measure-streaming-rtmp
+#   namespace: serverless
+# spec:
+#   selector:
+#     # Make sure this label matches your Pod's label found in step 1
+#     serving.knative.dev/service: measure-streaming
+#   ports:
+#     - protocol: TCP
+#       port: 1935
+#       targetPort: 1935

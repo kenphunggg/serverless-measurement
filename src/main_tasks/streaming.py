@@ -6,6 +6,7 @@ from threading import Thread
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.ticker import FuncFormatter
 
 from src import variables as var
 from src.k8sAPI import K8sAPI
@@ -144,12 +145,60 @@ class StreamingMeasuring:
                         time_to_first_frame = 0
                         starttime = time.monotonic()
 
-                        query_url(
+                        start_stream = query_url(
                             url=f"http://{self.ksvc_name}.{self.namespace}:{self.flask_port}/stream/start"
                         )
+                        if start_stream is None:
+                            logging.warning("Error when starting stream, start deleting svc and try again")
+                            K8sAPI.delete_deployment_svc(
+                                svc_name=self.ksvc_name, namespace=self.namespace
+                            )
+
+                            while True:
+                                pods = K8sAPI.get_pod_status_by_deployment(
+                                    namespace=self.namespace, deployment_name=self.ksvc_name
+                                )
+                                logging.info(
+                                    f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                                )
+                                time.sleep(2)
+                                if not pods:
+                                    logging.info(
+                                        f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                                    )
+                                    break
+
+                            K8sAPI.deploy_k8s_streaming(
+                                svc_name=self.ksvc_name,
+                                namespace=self.namespace,
+                                image=self.k8s_image,
+                                flask_port=self.flask_port,
+                                stream_port=self.port,
+                                hostname=self.hostname,
+                                replica=replica,
+                                streaming_info=self.cluster_info.streaming_info,
+                                cpu=resource["cpu"],
+                                memory=resource["memory"],
+                            )
+
+                            # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                            while True:
+                                if K8sAPI.all_pods_ready(
+                                    pods=K8sAPI.get_pod_status_by_deployment(
+                                        namespace=self.namespace, deployment_name=self.ksvc_name
+                                    )
+                                ):
+                                    logging.info("All pods ready!")
+                                    break
+                                logging.info("Waiting for pods to be ready ...")
+                                time.sleep(2)
+                            time.sleep(self.cool_down_time)
+                            i-=1
+                            continue
+                            
 
                         response = get_time_to_first_frame_warm(
-                            url=f"http://{self.ksvc_name}.{self.namespace}:{self.port}/{self.cluster_info.streaming_info.streaming_uri}"
+                            url=f"rtmp://{self.ksvc_name}.{self.namespace}:{self.port}/{self.cluster_info.streaming_info.streaming_uri}"
                         )
                         time_to_first_frame = time.monotonic() - starttime
 
@@ -254,19 +303,32 @@ class StreamingMeasuring:
 
                     # 4. Execute ffmpeg command to receive video from source and get fps
                     logging.info("Start catching fps/bitrate of streaming service")
-                    stream_stats = get_fps_bitrate(
-                        stream_url=f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
+                    # 4.1. Unpack the two lists returned by the updated function
+                    fps_list, bitrate_list = get_fps_bitrate(
+                        stream_url=f"rtmp://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
                         num_samples=self.curl_time,
-                        # duration=self.detection_time,
                     )
 
-                    logging.info(stream_stats)
+                    # 4.2. Log summary statistics (optional, but good for debugging)
+                    if fps_list:
+                        avg_fps = sum(fps_list) / len(fps_list)
+                        avg_bitrate = sum(bitrate_list) / len(bitrate_list)
+                        logging.info(f"Captured {len(fps_list)} samples.")
+                        logging.info(f"Stats -> Avg FPS: {avg_fps:.2f} | Avg Bitrate: {avg_bitrate:.0f} kbits/s")
+                    else:
+                        logging.warning("No samples were captured from the stream.")
 
-                    with open(stream_stats_file, "a", newline="") as f:
-                        writer = csv.writer(f)
-                        # Use the generator to get live stats
-                        for stats in stream_stats:
-                            writer.writerow([stats])
+                    # 4.3. Write to CSV
+                    # This will write two columns: [FPS, Bitrate]
+                    if fps_list:
+                        with open(stream_stats_file, "a", newline="") as f:
+                            writer = csv.writer(f)
+                            
+                            # 'zip' pairs the two lists together so you can write them in the same row
+                            for fps, bitrate in zip(fps_list, bitrate_list):
+                                writer.writerow([fps, bitrate])
+
+                        logging.info(f"Successfully saved data to {stream_stats_file}")
 
                     logging.info(f"Successfully saved data to {stream_stats_file}")
 
@@ -490,7 +552,7 @@ class StreamingMeasuring:
                         time.sleep(self.cool_down_time)
 
                         time_to_first_frame = get_time_to_first_frame(
-                            url=f"http://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}"
+                            url=f"rtmp://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}.svc.cluster.local"
                         )
 
                         if time_to_first_frame:
@@ -797,15 +859,11 @@ class PlotResult:
 
     @staticmethod
     def resource(result_file, output_file):
-        """
-        Reads hardware usage data from a CSV and generates a 2x2 boxplot grid
-        for CPU, Memory, Network In, and Network Out.
-        """
         logging.info("Start plot hardware usage of streaming service")
         cpu_data = []
         mem_data = []
         network_in_data = []
-        network_out_data = []  # <-- Added list for Network Out data
+        network_out_data = []
 
         try:
             with open(result_file, "r", newline="") as file:
@@ -817,66 +875,69 @@ class PlotResult:
                             cpu_data.append(float(row[1]))
                             mem_data.append(float(row[2]))
                             network_in_data.append(float(row[3]))
-                            # Read the 5th column (index 4) for Network Out
                             network_out_data.append(float(row[4]))
                         except (ValueError, IndexError) as e:
-                            logging.warning(
-                                f"Skipping invalid row or value: {row}. Error: {e}"
-                            )
-        except FileNotFoundError:
-            logging.error(f"The file '{result_file}' was not found.")
-            return
-        except StopIteration:
-            logging.error(
-                f"The CSV file '{result_file}' is empty or has only a header."
-            )
-            return
+                            logging.warning(f"Skipping invalid row: {row}. Error: {e}")
+
         except Exception as e:
-            logging.error(f"An unexpected error occurred: {e}")
+            logging.error(f"Error reading file: {e}")
             return
 
-        # Check if any data was actually loaded
         if not all([cpu_data, mem_data, network_in_data, network_out_data]):
-            logging.error("One or more data series is empty. Cannot generate plot.")
+            logging.error("Data series empty.")
             return
 
-        # --- UPGRADED PLOTTING SECTION ---
-        # Change layout to a 2x2 grid for better readability
-        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
-        fig.suptitle(
-            "Streaming Service Resource Usage",
-            fontsize=18,
-            fontweight="bold",
-        )
+        # --- 1. DEFINE THE FORMATTER ---
+        def human_readable_format(x, pos):
+            """
+            Converts raw numbers to K, M, G, T units.
+            x: value, pos: tick position (required by matplotlib)
+            """
+            if x >= 1e12:
+                return f"{x * 1e-12:.1f}T"
+            elif x >= 1e9:
+                return f"{x * 1e-9:.1f}G"
+            elif x >= 1e6:
+                return f"{x * 1e-6:.1f}M"
+            elif x >= 1e3:
+                return f"{x * 1e-3:.1f}K"
+            return f"{x:.0f}"
 
-        # Plot 1: CPU Usage (Top-Left)
+        # Create the formatter object
+        formatter = FuncFormatter(human_readable_format)
+
+        # --- PLOTTING ---
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
+        fig.suptitle("Streaming Service Resource Usage", fontsize=18, fontweight="bold")
+
+        # Plot 1: CPU Usage (Usually kept as raw numbers for Cores)
         axes[0, 0].boxplot(cpu_data)
         axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
-        axes[0, 0].set_ylabel("Usage (mCPU)")
+        axes[0, 0].set_ylabel("Usage (Core)")
         axes[0, 0].set_xticklabels(["CPU"])
 
-        # Plot 2: Memory Usage (Top-Right)
+        # Plot 2: Memory Usage (Apply Formatter)
         axes[0, 1].boxplot(mem_data)
         axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
-        axes[0, 1].set_ylabel("Usage (MB)")
+        axes[0, 1].set_ylabel("Usage (Bytes)")
         axes[0, 1].set_xticklabels(["Memory"])
+        axes[0, 1].yaxis.set_major_formatter(formatter)  # <--- Applied here
 
-        # Plot 3: Network In Traffic (Bottom-Left)
+        # Plot 3: Network In (Apply Formatter)
         axes[1, 0].boxplot(network_in_data)
         axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
-        axes[1, 0].set_ylabel("Traffic (MBps)")
+        axes[1, 0].set_ylabel("Traffic (Bps)")
         axes[1, 0].set_xticklabels(["Network In"])
+        axes[1, 0].yaxis.set_major_formatter(formatter)  # <--- Applied here
 
-        # Plot 4: Network Out Traffic (Bottom-Right) - NEW PLOT
+        # Plot 4: Network Out (Apply Formatter)
         axes[1, 1].boxplot(network_out_data)
         axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
-        axes[1, 1].set_ylabel("Traffic (MBps)")
+        axes[1, 1].set_ylabel("Traffic (Bps)")
         axes[1, 1].set_xticklabels(["Network Out"])
+        axes[1, 1].yaxis.set_major_formatter(formatter)  # <--- Applied here
 
-        # Adjust layout and save the figure
-        plt.tight_layout(
-            rect=[0, 0.03, 1, 0.95]
-        )  # Adjust rect to make space for suptitle
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         plt.savefig(output_file)
         logging.info(f"Plot successfully saved to {output_file}")
 

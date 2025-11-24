@@ -195,72 +195,71 @@ class YoloMeasuring:
             for rep in range(1, self.repetition + 1, 1):
                 for resource in self.resource_requests:
                     # This new loop will keep trying the *current resource* until it succeeds
-                    successful_load = False
-                    while not successful_load:
-                        logging.info(
-                            f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
-                        )
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
+                    )
 
-                        # 1. Create result file
-                        result_file = CreateResultFile.yolo_detection_warm(
-                            nodename=self.hostname,
-                            filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
-                        )
+                    # 1. Create result file
+                    result_file = CreateResultFile.yolo_detection_cold(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
+                    )
 
-                        # 2. Deploy ksvc for measuring
-                        window_time = 20
-                        K8sAPI.deploy_ksvc_yolo(
-                            ksvc_name=self.ksvc_name,
-                            namespace=self.namespace,
-                            image=self.image,
-                            port=self.port,
-                            hostname=self.hostname,
-                            window_time=window_time,
-                            min_scale=replica,
-                            max_scale=replica,
-                            rtmp_stream_url=self.rtmp_stream_url,
-                            cpu=resource["cpu"],
-                            memory=resource["memory"],
-                        )
+                    # 2. Deploy ksvc for measuring
+                    window_time = 20
+                    K8sAPI.deploy_ksvc_yolo(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=window_time,
+                        min_scale=0,
+                        max_scale=replica,
+                        rtmp_stream_url=self.rtmp_stream_url,
+                        cpu=resource["cpu"],
+                        memory=resource["memory"],
+                    )
 
-                        # 3. Wait for pods to be ready
-                        while True:
-                            if K8sAPI.all_pods_ready(
-                                pods=K8sAPI.get_pod_status_by_ksvc(
-                                    namespace=self.namespace, ksvc_name=self.ksvc_name
-                                )
-                            ):
-                                logging.info("All pods ready!")
-                                break
-                            logging.info("Waiting for pods to be ready ...")
-                            time.sleep(2)
-
-                        time.sleep(self.cool_down_time)
-
-                        # 4. Try to load the model (using the modified query_url)
-                        response_data = query_url(
-                            url=f"http://{self.ksvc_name}.{self.namespace}/model/load"
-                        )
-
-                        # 5. Check the result
-                        if response_data is None:
-                            logging.error(
-                                f"Failed to load model for {resource}. Retrying entire deployment..."
+                    # 3. Wait for pods to be ready
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
                             )
-                            K8sAPI.delete_ksvc(self.ksvc_name, self.namespace)
-                            time.sleep(self.cool_down_time)  # Wait before retrying
-                        else:
-                            successful_load = True
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
 
-                    logging.info("Model loaded. Proceeding with measurements.")
+                    time.sleep(self.cool_down_time)
 
                     # 4. Execute ffmpeg command to receive video from source and get time to first frame
                     for i in range(self.curl_time):
                         logging.info(
-                            f"Start measure response time of yolo service when pod in warm status [{i}/{self.curl_time}]"
+                            f"Start measure response time of yolo service when pod in cold status [{i}/{self.curl_time}]"
                         )
 
+                        while True:
+                            if (
+                                K8sAPI.get_pod_status_by_ksvc(
+                                    namespace=self.namespace, ksvc_name=self.ksvc_name
+                                )
+                                == []
+                            ):
+                                logging.info("Scaled to zero!")
+                                break
+                            logging.info("Waiting for pods to scale to zero ...")
+                            time.sleep(2)
+                        time.sleep(self.cool_down_time)
+
                         start_time = time.time()
+
+                        query_url(
+                            url=f"http://{self.ksvc_name}.{self.namespace}/model/load"
+                        )
+
                         response = query_url_post_image(
                             url=f"http://{self.ksvc_name}.{self.namespace}/detect",
                             image_path="config/img/4k.jpg",
@@ -285,13 +284,6 @@ class YoloMeasuring:
 
                             with open(result_file, mode="a", newline="") as f:
                                 result_value = [
-                                    response["model_inference_ms"],
-                                    response["model_nms_ms"],
-                                    response["model_preprocess_ms"],
-                                    response["model_inference_ms"]
-                                    + response["model_nms_ms"]
-                                    + response["model_preprocess_ms"],
-                                    response["total_server_time_ms"],
                                     response_time_ms,
                                 ]
                                 writer = csv.writer(f)
@@ -302,13 +294,9 @@ class YoloMeasuring:
 
                         time.sleep(self.cool_down_time)
 
-                    PlotResult.response_time_warm(
+                    PlotResult.response_time_cold(
                         result_file=result_file,
-                        output_file=f"result/3_1_yolo_warm/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
-                    )
-
-                    query_url(
-                        url=f"http://{self.ksvc_name}.{self.namespace}/model/unload"
+                        output_file=f"result/3_2_yolo_cold/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
                     )
 
                     K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
@@ -333,11 +321,11 @@ class YoloMeasuring:
                     time.sleep(self.cool_down_time)
 
                     logging.info(
-                        f"End measure response time of yolo service when pod in warm status [{i}/{self.curl_time}]"
+                        f"End measure response time of yolo service when pod in cold status [{i}/{self.curl_time}]"
                     )
 
         logging.info(
-            "End Scenario: Get 'Yolo Detection attributes' of 'YoloService' when pod in warm status"
+            "End Scenario: Get 'Yolo Detection attributes' of 'YoloService' when pod in cold status"
         )
 
     def get_hardware_usage(self):
@@ -534,6 +522,76 @@ class PlotResult:
             ax.set_xticklabels(
                 ["Total Response Time", "Total Processing Time"], fontsize=12
             )
+
+            # Use the grid style from the template
+            plt.grid(True, axis="y", linestyle="--", alpha=0.7)
+
+            # --- Save the plot to an image file (using template's style) ---
+            plt.savefig(output_file, dpi=300, bbox_inches="tight")
+            logging.info(f"Successfully plotted and saved box plot to {output_file}")
+
+        except Exception as e:
+            logging.error(f"Error saving plot: {e}")
+        finally:
+            plt.close()  # Ensure the plot is closed to free memory
+
+    @staticmethod
+    def response_time_cold(result_file, output_file):
+        logging.info("Start plot response time of yolo service when pod in warm status")
+        resp_time = []
+        # proc_time = []  <-- REMOVED
+
+        try:
+            with open(result_file, "r", newline="") as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header
+                for row in reader:
+                    if row:
+                        try:
+                            # row[0] = total response time (was row[5] in your comment)
+                            # row[4] = inference processing time
+                            resp_time.append(float(row[0]))
+                            # proc_time.append(float(row[4]))  <-- REMOVED
+                        except (ValueError, IndexError):
+                            logging.warning(
+                                f"Warning: Skipping invalid row or value: {row}"
+                            )
+        except FileNotFoundError:
+            logging.error(f"Error: The file '{result_file}' was not found.")
+            return
+        except StopIteration:
+            logging.error(
+                f"Error: The CSV file '{result_file}' is empty or contains only a header."
+            )
+            return
+        except Exception as e:
+            logging.error(f"An error occurred: {e}")
+            return
+
+        # --- FIX 3: Simplified check for only resp_time ---
+        if not resp_time:
+            logging.error("No valid data for response time was found to plot.")
+            return
+
+        # --- Create and customize the box plot (using template's style) ---
+        try:
+            # --- FIX 4: Plot only resp_time ---
+            data_to_plot = [resp_time]
+
+            fig = plt.figure(figsize=(10, 7))
+            ax = fig.add_axes([0, 0, 1, 1])
+
+            # This will now create ONE box plot
+            ax.boxplot(data_to_plot)
+
+            plt.title(
+                "Distribution of Response Time (Warm Pod)",
+                fontsize=16,
+            )
+            plt.ylabel("Time (ms)", fontsize=12)
+
+            # Now the 1 label matches the 1 dataset
+            ax.set_xticklabels(["Total Response Time"], fontsize=12)
 
             # Use the grid style from the template
             plt.grid(True, axis="y", linestyle="--", alpha=0.7)

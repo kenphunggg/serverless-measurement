@@ -4,6 +4,8 @@ import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -27,9 +29,10 @@ class DatabaseInfo:
 
 
 class StreamingInfo:
-    def __init__(self, streaming_source, streaming_uri):
+    def __init__(self, streaming_source, streaming_uri, streaming_resolution):
         self.streaming_source = streaming_source
         self.streaming_uri = streaming_uri
+        self.streaming_resolution = streaming_resolution
 
 
 class PrometheusServer:
@@ -124,7 +127,7 @@ class CreateResultFile:
             test_case="1_2_resource_web",
             nodename=nodename,
             filename=filename,
-            header="timestamp,cpu_usage(%),mem_usage(%),network(MBps)\n",
+            header="timestamp,cpu_usage(vCPU),mem_usage(Bytes),network_in(Bps),network_out(Bps)\n",
         )
 
     def web_curl_cold(nodename: str, filename: str):
@@ -187,6 +190,15 @@ class CreateResultFile:
             nodename=nodename,
             filename=filename,
             header="model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",
+        )
+
+    @staticmethod
+    def yolo_detection_cold(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="3_2_yolo_cold",
+            nodename=nodename,
+            filename=filename,
+            header="response_time\n",
         )
 
 
@@ -410,101 +422,68 @@ def get_time_to_first_frame_warm(
     wait_timeout: float = 6000.0,
 ) -> bool:
     """
-    Waits for a stream (HLS playlist) to become available (HTTP 200)
-    and then runs ffmpeg to confirm it can be decoded.
+    Polls an RTMP URL using ffmpeg until it successfully captures the first frame.
 
     Args:
-        url: The URL of the video stream (playlist.m3u8) to test.
-        wait_timeout: The maximum time in seconds to wait for the stream
-                      to become available before giving up.
+        url: The RTMP URL (e.g., rtmp://host:1935/app/stream).
+        wait_timeout: Maximum seconds to wait for the stream to become decodable.
 
     Returns:
         True if the stream was found and ffmpeg processed the first frame.
         False otherwise.
     """
-
-    # --- 1. Poll for the HLS playlist ---
     wait_start_time = time.monotonic()
-    logging.debug(f"Waiting for stream to become available at: {url}")
+    logging.debug(f"Polling for RTMP stream at: {url}")
 
     while True:
-        elapsed_wait = time.monotonic() - wait_start_time
-        if elapsed_wait > wait_timeout:
+        # 1. Check global timeout
+        elapsed_total = time.monotonic() - wait_start_time
+        if elapsed_total > wait_timeout:
             logging.error(
-                f"Timeout: Waited {elapsed_wait:.2f}s, but stream at {url} never became available (HTTP 404)."
+                f"Timeout: Waited {elapsed_total:.2f}s, but RTMP stream at {url} never became decodable."
             )
             return False
 
+        # 2. Calculate dynamic timeout for this specific ffmpeg attempt
+        #    We give ffmpeg the remaining time, but minimally 2.0 seconds to attempt a handshake.
+        current_attempt_timeout = max(2.0, wait_timeout - elapsed_total)
+
+        command = [
+            "ffmpeg",
+            "-i", url,
+            "-vframes", "1",       # Exit after processing the first video frame
+            "-f", "null", "-",     # Discard output
+            "-rw_timeout", str(int(wait_timeout * 1_000_000))
+        ]
+
         try:
-            # Use a short timeout for the polling request
-            response = requests.get(url, timeout=1.0)
+            # Attempt to grab the frame
+            subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=current_attempt_timeout
+            )
+            
+            # If we reach here, ffmpeg succeeded (exit code 0)
+            logging.info(f"RTMP Stream found and decoded after {elapsed_total:.2f}s.")
+            return True
 
-            if response.status_code == 200:
-                logging.info(
-                    f"Stream at {url} is UP (HTTP 200) after {elapsed_wait:.2f}s."
-                )
-                break  # Playlist is available!
-            elif response.status_code == 404:
-                # 404: File not found. This is expected. Wait and retry.
-                logging.warning("Got 404, file not ready yet. Retrying...")
-                time.sleep(0.1)  # Wait 100ms before retrying
-            else:
-                logging.warning(
-                    f"Stream not ready (HTTP {response.status_code}). Waiting..."
-                )
-        except requests.exceptions.ConnectionError:
-            # Server (Nginx) isn't even responding. Wait and retry.
-            logging.warning("Connection error, server not ready. Retrying...")
+        except subprocess.CalledProcessError:
+            # Exit code was non-zero (Stream likely not up yet, or handshake failed)
+            # We suppress the error log here to avoid spamming while polling
+            time.sleep(0.5) 
+            continue
 
-        except requests.RequestException as e:
-            # This handles connection errors, etc.
-            logging.warning(f"Stream not ready (RequestException: {e}). Waiting...")
+        except subprocess.TimeoutExpired:
+            # FFmpeg hung (likely socket opened but no data flow)
+            logging.warning("ffmpeg timed out waiting for data. Retrying...")
+            continue
 
-        time.sleep(0.25)  # Poll every 250ms
-
-    # --- 2. Once playlist is found, run ffmpeg ---
-    # The calling code is measuring the total time. This function's job
-    # is to block until the first frame is actually decoded.
-
-    command = [
-        "ffmpeg",
-        "-i",
-        url,
-        "-vframes",
-        "1",  # Exit after processing the first frame
-        "-f",
-        "null",  # Discard the frame data
-        "-",
-    ]
-
-    try:
-        # Calculate remaining time for the ffmpeg process itself
-        ffmpeg_timeout = max(1.0, wait_timeout - (time.monotonic() - wait_start_time))
-
-        subprocess.run(
-            command,
-            capture_output=True,  # Captures stdout and stderr
-            text=True,  # Decodes output as text
-            check=True,  # Raises an error if ffmpeg fails
-            timeout=ffmpeg_timeout,  # Timeout for the ffmpeg process
-        )
-
-        logging.debug("ffmpeg successfully processed the first frame.")
-        return True  # Success!
-
-    except subprocess.CalledProcessError as e:
-        # This will catch errors if ffmpeg finds the playlist but fails to decode
-        logging.error(f"ffmpeg failed for URL: {url}")
-        logging.error(f"FFmpeg STDERR:\n{e.stderr}")
-        return False
-    except subprocess.TimeoutExpired:
-        logging.error(f"ffmpeg timed out while processing the stream from URL: {url}")
-        return False
-    except FileNotFoundError:
-        logging.error(
-            "ffmpeg command not found. Is it installed and in your system's PATH?"
-        )
-        return False
+        except Exception as e:
+            logging.error(f"Unexpected error running ffmpeg: {e}")
+            return False
 
 
 def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | None:
@@ -592,54 +571,97 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
         return None
 
 
+import time
+import logging
+import urllib.request
+import urllib.error
+import subprocess
+import re
+import sys
+
 def get_fps_bitrate(stream_url, num_samples=100):
     """
-    Analyzes a stream URL with FFmpeg and captures FPS samples from its output.
-
-    This function builds the FFmpeg command internally and includes timeouts
-    to handle slow-starting or stalling streams.
+    Analyzes a stream URL with FFmpeg and captures both FPS and Bitrate samples.
 
     Args:
         stream_url (str): The URL of the video stream to analyze.
-        num_samples (int): The number of FPS samples to collect.
+        num_samples (int): The number of valid samples to collect.
 
     Returns:
-        list: A list of floats containing the captured FPS values. Returns an empty
-                list if the process fails or times out before capturing any data.
+        tuple: (fps_values, bitrate_values)
+               - fps_values (list of floats): Captured FPS.
+               - bitrate_values (list of floats): Captured Bitrate in kbits/s.
+               Returns ([], []) if the process fails or times out.
     """
-    # Construct the full FFmpeg command from the URL
-    STARTUP_TIMEOUT_SECONDS = 6000
-    INACTIVITY_TIMEOUT_SECONDS = 6000
+
+    # --- 1. Pre-flight Check: Wait for the stream to be ready ---
+    # NOTE: urllib only supports HTTP/HTTPS. We skip this check for RTMP/RTSP
+    # to prevent "unknown url type" errors.
+    if stream_url.startswith(("http://", "https://")):
+        STREAM_CHECK_TIMEOUT_SECONDS = 60  # Adjusted to 60s for sanity
+        STREAM_CHECK_INTERVAL_SECONDS = 5
+        stream_ready = False
+        check_start_time = time.time()
+
+        logging.info(f"Verifying stream URL is ready: {stream_url}")
+
+        while time.time() - check_start_time < STREAM_CHECK_TIMEOUT_SECONDS:
+            try:
+                req = urllib.request.Request(stream_url, method="HEAD")
+                req.add_header("User-Agent", "Mozilla/5.0")
+
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    if response.status == 200:
+                        logging.info("  -> Stream is ready (HTTP 200 OK).")
+                        stream_ready = True
+                        break
+                    else:
+                        logging.info(f"  -> Stream not ready (HTTP {response.status}). Retrying...")
+            except (urllib.error.HTTPError, urllib.error.URLError, Exception) as e:
+                logging.info(f"  -> Stream check failed ({e}). Retrying...")
+
+            time.sleep(STREAM_CHECK_INTERVAL_SECONDS)
+
+        if not stream_ready:
+            logging.error("FATAL: Stream not ready (HTTP check failed). Aborting.")
+            return [], []
+    else:
+        logging.info(f"Skipping HTTP pre-flight check for non-HTTP protocol: {stream_url}")
+
+    # --- 2. FFmpeg Analysis ---
+    STARTUP_TIMEOUT_SECONDS = 30
+    INACTIVITY_TIMEOUT_SECONDS = 30
+
     command = [
         "ffmpeg",
-        # Suppress verbose logs but keep the one-line progress stats
-        "-loglevel",
-        "error",
-        "-stats",
-        "-i",
-        stream_url,
-        "-f",
-        "null",  # Don't encode or save any output file
-        "-",  # Pipe to stdout (though we discard it)
+        "-loglevel", "error",
+        "-stats",       # Essential for getting progress info on stderr
+        "-i", stream_url,
+        "-f", "null",   # Null muxer (discard output)
+        "-"
     ]
 
-    logging.info(f"🚀 Analyzing stream to capture {num_samples} FPS samples...")
-    logging.info(f"   URL: {stream_url}")
-    logging.info(
-        f"   (Startup timeout: {STARTUP_TIMEOUT_SECONDS}s, Inactivity timeout: {INACTIVITY_TIMEOUT_SECONDS}s)"
-    )
+    logging.info(f"🚀 Analyzing stream to capture {num_samples} samples...")
 
+    # Regex for FPS: matches "fps= 30" or "fps=30.5"
     fps_pattern = re.compile(r"fps=\s*([\d.]+)")
+    # Regex for Bitrate: matches "bitrate= 1200.5kbits/s"
+    bitrate_pattern = re.compile(r"bitrate=\s*([\d.]+)\s*kbits/s")
+
     fps_samples = []
+    bitrate_samples = []
+    all_stderr_lines = []
+
+    process = None
 
     try:
-        # Start the FFmpeg process with the constructed command
         process = subprocess.Popen(
             command,
             stderr=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
             encoding="utf-8",
             errors="replace",
+            universal_newlines=True 
         )
 
         start_time = time.time()
@@ -651,65 +673,74 @@ def get_fps_bitrate(stream_url, num_samples=100):
                 break
 
             current_time = time.time()
-            if not fps_samples and (
-                current_time - start_time > STARTUP_TIMEOUT_SECONDS
-            ):
-                logging.error(
-                    f"Timeout: No FPS data received within the {STARTUP_TIMEOUT_SECONDS}s startup period. Stopping."
-                )
+
+            # Timeouts
+            if not fps_samples and (current_time - start_time > STARTUP_TIMEOUT_SECONDS):
+                logging.error("Timeout: No data received during startup.")
                 break
-            if fps_samples and (
-                current_time - last_output_time > INACTIVITY_TIMEOUT_SECONDS
-            ):
-                logging.warning(
-                    f"Timeout: Stream inactive for over {INACTIVITY_TIMEOUT_SECONDS}s. Stopping."
-                )
+            if fps_samples and (current_time - last_output_time > INACTIVITY_TIMEOUT_SECONDS):
+                logging.warning("Timeout: Stream inactive.")
                 break
 
+            # Non-blocking read is hard in simple Python without threads/select, 
+            # but readline() usually blocks until a newline or buffer fills. 
+            # Given FFmpeg updates stats via \r, this relies on Python handling \r as newlines 
+            # or FFmpeg outputting often enough.
             line = process.stderr.readline()
-
+            
             if line:
                 last_output_time = time.time()
+                line_content = line.strip()
+                all_stderr_lines.append(line_content)
 
-                match = fps_pattern.search(line.strip())
-                if match:
+                # Extract Data
+                fps_match = fps_pattern.search(line_content)
+                bitrate_match = bitrate_pattern.search(line_content)
+
+                if fps_match and bitrate_match:
                     try:
-                        fps_value = float(match.group(1))
-                        fps_samples.append(fps_value)
-                        progress_msg = f"  -> Captured sample {len(fps_samples)}/{num_samples}: {fps_value:.2f} fps"
-                        sys.stdout.write(f"\r{progress_msg:<80}")
-                        sys.stdout.flush()
-                    except (ValueError, IndexError):
+                        val_fps = float(fps_match.group(1))
+                        val_bitrate = float(bitrate_match.group(1))
+
+                        # Simple filter: ignore 0 fps or 0 bitrate which often happens at start
+                        if val_fps > 0 and val_bitrate > 0:
+                            fps_samples.append(val_fps)
+                            bitrate_samples.append(val_bitrate)
+
+                            # Progress Bar
+                            msg = f" -> Sample {len(fps_samples)}/{num_samples}: {val_fps:.1f} fps, {val_bitrate:.0f} kbits/s"
+                            sys.stdout.write(f"\r{msg:<80}")
+                            sys.stdout.flush()
+
+                    except ValueError:
                         continue
             else:
-                break
+                # Check if process is still alive if we got no line
+                if process.poll() is not None:
+                    break
+                time.sleep(0.05) # Prevent busy loop if waiting for output
 
-        print()
-        logging.info("✅ Sample collection finished or was interrupted.")
+        print() # Newline after progress
+        logging.info("✅ Sample collection finished.")
 
     except FileNotFoundError:
-        logging.error(
-            "Error: 'ffmpeg' command not found. Make sure FFmpeg is installed and in your PATH."
-        )
-        return []
+        logging.error("Error: 'ffmpeg' command not found.")
+        return [], []
     except Exception as e:
-        logging.error(f"An unexpected error occurred: {e}", exc_info=True)
-        return []
-
+        logging.error(f"Unexpected error: {e}")
+        return [], []
     finally:
-        if "process" in locals() and process.poll() is None:
-            logging.info("🔪 Terminating FFmpeg process...")
+        if process and process.poll() is None:
             process.terminate()
             try:
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                logging.warning("FFmpeg did not terminate gracefully, killing it.")
                 process.kill()
 
-    return fps_samples
+    return fps_samples, bitrate_samples
 
 
-def query_url(url: str, max_retries: int = 5) -> dict | None:
+def query_url(url: str, max_retries: int = 3) -> dict | None:
     """
     Makes a GET request with a retry limit and returns data or None.
     """

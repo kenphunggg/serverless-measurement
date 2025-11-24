@@ -98,7 +98,8 @@
     },
     "streaming_info": {
         "source_ip": "192.168.17.162:2000",
-        "stream_uri": "live/playlist.m3u8"
+        "stream_uri": "live/stream",
+        "resolution": "1280:720"
     },
     "database_info": {
         "db_host": "172.16.42.14",

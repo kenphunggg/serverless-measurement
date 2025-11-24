@@ -1,11 +1,8 @@
-# This YAML file contains two objects, separated by ---
-# 1. The Deployment: Manages your app's Pod (container).
-# 2. The Service: Exposes your app to the internet.
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: measure-streaming
+  namespace: serverless
   labels:
     app: measure-streaming
 spec:
@@ -20,15 +17,17 @@ spec:
     spec:
       containers:
       - name: measure-streaming-container
-        image: docker.io/lazyken/measure-streaming-k8s:v1
+        image: docker.io/lazyken/measure-streaming:v2@sha256:735536871c64e7d08c0e63b1de3b490f7f97079767ea19dac0a6896b988deb4c
         env:
         - name: SOURCE_IP
           value: "192.168.17.130:2000" # Your desired default IP
+        - name: SCALE_VALUE
+          value: "1280:720" # Your desired default IP
         ports:
         - name: api
           containerPort: 5000
-        - name: hls
-          containerPort: 8080
+        - name: rtmp
+          containerPort: 1935
         readinessProbe:
           httpGet:
             path: /stream/status
@@ -46,6 +45,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: measure-streaming
+  namespace: serverless
 spec:
   type: NodePort
   selector:
@@ -55,10 +55,7 @@ spec:
     protocol: TCP
     port: 5000       # Port the Service exposes internally in the cluster
     targetPort: api  # Port on the Pod (references port 'name' from Deployment)
-    # nodePort: 30001 # Optional: You can specify a port in the 30000-32767 range
-  - name: hls
+  - name: rtmp
     protocol: TCP
-    port: 8080       # Port the Service exposes internally in the cluster
-    targetPort: hls  # Port on the Pod
-    # nodePort: 30002 # Optional: You can specify a port
-
+    port: 1935       # Port the Service exposes internally in the cluster
+    targetPort: rtmp # Port on the Pod

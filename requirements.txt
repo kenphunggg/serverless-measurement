@@ -1,7 +1,7 @@
 cachetools==5.5.2
 certifi==2025.7.14
 charset-normalizer==3.4.2
-contourpy==1.3.3
+contourpy
 cycler==0.12.1
 dateparser==1.2.2
 durationpy==0.10
@@ -12,7 +12,7 @@ idna==3.10
 kiwisolver==1.4.8
 kubernetes==33.1.0
 matplotlib==3.10.3
-numpy==2.3.2
+numpy
 oauthlib==3.3.1
 packaging==25.0
 pandas==2.3.1

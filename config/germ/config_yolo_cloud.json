@@ -1,0 +1,102 @@
+{
+    "test_cases": [
+        {
+            "test_case": "yolo",
+            "repetition": 3,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-yolo-cloud",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure-yolo:v1@sha256:19c6b78bc821ce089b2e65d5718116d2010d84d11e86043eb2263557a13452c7",
+            "rtmp_stream_url": "172.16.42.14:2000",
+            "port": 8080,
+            "namespace": "serverless",
+            "hostname": "cloud",
+            "host_ip": "172.16.42.14",
+            "cool_down_time": 20,
+            "curl_time": 60,
+            "detection_time": 60,
+            "resource_requests": [
+                {
+                    "cpu": 0,
+                    "memory": 0
+                },
+                {
+                    "cpu": "300m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "400m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "500m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "600m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "700m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "800m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "900m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "1000m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "1500m",
+                    "memory": "2Gi"
+                },
+                {
+                    "cpu": "2000m",
+                    "memory": "2Gi"
+                }
+            ]
+        }
+    ],
+    "prometheus": {
+        "server_ip": "172.16.42.13",
+        "port": 9090,
+        "interface": "enp0s25"
+    },
+    "cluster_info": {
+        "master-node": {
+            "hostname": "pc",
+            "host_ip": "172.16.42.13",
+            "interface": "enp0s25"
+        },
+        "worker-nodes": [
+            {
+                "hostname": "cloud",
+                "host_ip": "172.16.42.14",
+                "interface": "enp37s0"
+            },
+            {
+                "hostname": "ubuntu",
+                "host_ip": "172.16.42.11",
+                "interface": "eth0"
+            }
+        ]
+    },
+    "streaming_info": {
+        "source_ip": "192.168.17.162:2000",
+        "stream_uri": "live/stream",
+        "resolution": "1280:720"
+    },
+    "database_info": {
+        "db_host": "172.16.42.14",
+        "db_user": "thai",
+        "db_password": "1"
+    }
+}

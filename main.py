@@ -1,15 +1,30 @@
 import datetime
-import json
 import logging
-from typing import List
 
 from src import variables as var
-from src.lib import ClusterInfo, DatabaseInfo, Node, PrometheusServer, StreamingInfo
 from src.main_tasks.streaming import StreamingMeasuring
 from src.main_tasks.web_measuring import WebMeasuring
 from src.main_tasks.yolo import YoloMeasuring
 
-CONFIG_FILE = "config/config_streaming.json"
+# ---------- Preset Test Config ----------
+TEST_WEB_CONFIG_PATH = "config/config_web.json"
+TEST_STREAMING_CONFIG_PATH = "config/config_streaming.json"
+TEST_YOLO_CONFIG_PATH = "config/config_yolo.json"
+
+# ---------- Preset Germany Config ----------
+GERM_WEB_CONFIG_CLOUD_PATH = "config/germ/config_web_cloud.json"
+GERM_WEB_CONFIG_EDGE_PATH = "config/germ/config_web_edge.json"
+
+GERM_STREAMING_CONFIG_CLOUD_PATH = "config/germ/config_streaming_cloud.json"
+GERM_STREAMING_CONFIG_EDGE_PATH = "config/germ/config_streaming_edge.json"
+
+GERM_YOLO_CONFIG_CLOUD_PATH = "config/germ/config_yolo_cloud.json"
+GERM_YOLO_CONFIG_CLOUD_PATH = "config/germ/config_yolo_edge.json"
+
+
+
+# ---------- CONFIG FILE ----------
+CONFIG_FILE = TEST_YOLO_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -28,78 +43,25 @@ if __name__ == "__main__":
     var.reload_var()
 
     # Load the file's content into a dictionary
-    with open(CONFIG_FILE, "r") as f:
-        data = json.load(f)
-    test_cases = data["test_cases"]
-
-    # Load cluster info
-    cluster_info = data["cluster_info"]
-    master_node = Node(
-        ip_address=cluster_info["master-node"]["host_ip"],
-        hostname=cluster_info["master-node"]["hostname"],
-        interface=cluster_info["master-node"]["interface"],
-    )
-    worker_nodes: List[Node] = []
-    worker_nodes_json = cluster_info["worker-nodes"]
-    for node_data in worker_nodes_json:
-        node = Node(
-            ip_address=node_data["host_ip"],
-            hostname=node_data["hostname"],
-            interface=node_data["interface"],
-        )
-        worker_nodes.append(node)
-
-    # Load database info
-    database_info_json = data["database_info"]
-    database_info = DatabaseInfo(
-        host=database_info_json["db_host"],
-        user=database_info_json["db_user"],
-        password=database_info_json["db_password"],
-    )
-
-    streaming_info_json = data["streaming_info"]
-    streaming_info = StreamingInfo(
-        streaming_source=streaming_info_json["source_ip"],
-        streaming_uri=streaming_info_json["stream_uri"],
-        streaming_resolution=streaming_info_json["resolution"]
-    )
-
-    prom_server_json = data["prometheus"]
-    prom_server = PrometheusServer(
-        ip=prom_server_json["server_ip"],
-        port=prom_server_json["port"],
-        interface=prom_server_json["interface"],
-    )
-
-    my_cluster = ClusterInfo(
-        master_node=master_node,
-        worker_nodes=worker_nodes,
-        database_info=database_info,
-        streaming_info=streaming_info,
-        prom_server=prom_server,
-    )
-
-    logging.info(my_cluster)
+    test_cases, my_cluster = var.load_cluster_configuration(config_path=CONFIG_FILE)
 
     # Run all test cases
     for test_case in test_cases:
         if test_case["test_case"] == "web":
-            # pass
             web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
             # web_measuring.baseline()
             # web_measuring.get_warm_resptime()
-            web_measuring.get_warm_hardware_usage()
+            # web_measuring.get_warm_hardware_usage()
             # web_measuring.get_cold_resptime()
             del web_measuring
 
         elif test_case["test_case"] == "streaming":
-            # pass
             streaming_measuring = StreamingMeasuring(
                 config=test_case, cluster_info=my_cluster
             )
             # streaming_measuring.baseline()
             # streaming_measuring.get_warm_timeToFirstFrame()
-            streaming_measuring.get_fps()
+            # streaming_measuring.get_fps()
             # streaming_measuring.get_hardware_resource()
             # streaming_measuring.get_cold_timeToFirstFrame()
             del streaming_measuring

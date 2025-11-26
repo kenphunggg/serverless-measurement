@@ -189,7 +189,7 @@ class CreateResultFile:
             test_case="3_1_yolo_warm",
             nodename=nodename,
             filename=filename,
-            header="model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",
+            header="model_loading_time_ms,model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",
         )
 
     @staticmethod
@@ -198,7 +198,7 @@ class CreateResultFile:
             test_case="3_2_yolo_cold",
             nodename=nodename,
             filename=filename,
-            header="response_time\n",
+            header="model_loading_time_ms,model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",
         )
 
 
@@ -470,10 +470,15 @@ def get_time_to_first_frame_warm(
             logging.info(f"RTMP Stream found and decoded after {elapsed_total:.2f}s.")
             return True
 
-        except subprocess.CalledProcessError:
-            # Exit code was non-zero (Stream likely not up yet, or handshake failed)
-            # We suppress the error log here to avoid spamming while polling
-            time.sleep(0.5) 
+        except subprocess.CalledProcessError as e:
+            logging.warning(f"ffmpeg failed (Exit code {e.returncode}). Retrying...")
+            
+            # Log the specific error message from FFmpeg (if available)
+            if e.stderr:
+                # .strip() removes extra newlines at the end
+                logging.warning(f"FFmpeg Error Log: {e.stderr.strip()}")
+            
+            time.sleep(0.5)
             continue
 
         except subprocess.TimeoutExpired:

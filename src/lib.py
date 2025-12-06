@@ -575,15 +575,6 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
         )
         return None
 
-
-import time
-import logging
-import urllib.request
-import urllib.error
-import subprocess
-import re
-import sys
-
 def get_fps_bitrate(stream_url, num_samples=100):
     """
     Analyzes a stream URL with FFmpeg and captures both FPS and Bitrate samples.

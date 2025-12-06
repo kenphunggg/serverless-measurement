@@ -19,7 +19,7 @@ GERM_STREAMING_CONFIG_CLOUD_PATH = "config/germ/config_streaming_cloud.json"
 GERM_STREAMING_CONFIG_EDGE_PATH = "config/germ/config_streaming_edge.json"
 
 GERM_YOLO_CONFIG_CLOUD_PATH = "config/germ/config_yolo_cloud.json"
-GERM_YOLO_CONFIG_CLOUD_PATH = "config/germ/config_yolo_edge.json"
+GERM_YOLO_CONFIG_EDGE_PATH = "config/germ/config_yolo_edge.json"
 
 
 

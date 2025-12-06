@@ -17,6 +17,7 @@ from src.lib import (
     get_time_to_first_frame,
     get_time_to_first_frame_warm,
     query_url,
+    KnativePinger
 )
 from src.prometheus import Prometheus
 
@@ -507,8 +508,8 @@ class StreamingMeasuring:
                         time.sleep(2)
 
                     # 4. Execute ffmpeg command to receive video from source and get time to first frame
-                    for _ in range(self.curl_time):
-                        logging.info("Start catching streaming service")
+                    for i in range(self.curl_time):
+                        logging.info(f"Start catching streaming service [{i+1}/{self.curl_time}]")
 
                         # 5. Waiting for all pods to scale to zero
                         while True:
@@ -549,19 +550,26 @@ class StreamingMeasuring:
                             logging.info("Waiting for pods to scale to zero ...")
                             time.sleep(2)
 
-                        time.sleep(self.cool_down_time)
+                        time.sleep(2)
+
+                        pinger = KnativePinger(url=f"http://{self.ksvc_name}.{self.namespace}.svc.cluster.local")
+                        pinger.start()
+                        starttime = time.time()
+                        pod_ip = K8sAPI.get_ksvc_pod_ip(ksvc_name=self.ksvc_name, namespace=self.namespace)
 
                         time_to_first_frame = get_time_to_first_frame(
-                            url=f"rtmp://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}.svc.cluster.local"
+                            url=f"rtmp://{pod_ip}:1935/live/stream"
                         )
 
                         if time_to_first_frame:
                             with open(result_file, mode="a", newline="") as f:
                                 writer = csv.writer(f)
-                                writer.writerow([time_to_first_frame])
+                                writer.writerow([time.time()-starttime])
                                 logging.debug(
                                     f"Successfully write {time_to_first_frame} into {result_file}"
                                 )
+
+                        pinger.stop()
 
                     PlotResult.timeToFirstFrame(
                         result_file=result_file,

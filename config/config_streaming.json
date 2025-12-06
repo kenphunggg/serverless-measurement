@@ -14,7 +14,7 @@
             "flask_port": 5000,
             "namespace": "serverless",
             "hostname": "cloud-node",
-            "host_ip": "192.168.17.130",
+            "host_ip": "192.168.253.129",
             "cool_down_time": 30,
             "curl_time": 3,
             "detection_time": 60,
@@ -38,29 +38,29 @@
     "cluster_info": {
         "master-node": {
             "hostname": "master-node",
-            "host_ip": "192.168.17.129",
+            "host_ip": "192.168.253.128",
             "interface": "ens33"
         },
         "worker-nodes": [
             {
                 "hostname": "cloud-node",
-                "host_ip": "192.168.17.130",
+                "host_ip": "192.168.253.129",
                 "interface": "ens33"
             },
             {
                 "hostname": "edge-node",
-                "host_ip": "192.168.17.131",
+                "host_ip": "192.168.253.130",
                 "interface": "ens33"
             }
         ]
     },
     "streaming_info": {
-        "source_ip": "192.168.17.130:2000",
+        "source_ip": "192.168.253.129:2000",
         "stream_uri": "live/stream",
         "resolution": "1280:720"
     },
     "database_info": {
-        "db_host": "192.168.17.130",
+        "db_host": "192.168.253.129",
         "db_user": "thai",
         "db_password": "pass"
     }

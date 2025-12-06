@@ -24,7 +24,7 @@ GERM_YOLO_CONFIG_EDGE_PATH = "config/germ/config_yolo_edge.json"
 
 
 # ---------- CONFIG FILE ----------
-CONFIG_FILE = TEST_YOLO_CONFIG_PATH
+CONFIG_FILE = TEST_STREAMING_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -63,7 +63,7 @@ if __name__ == "__main__":
             # streaming_measuring.get_warm_timeToFirstFrame()
             # streaming_measuring.get_fps()
             # streaming_measuring.get_hardware_resource()
-            # streaming_measuring.get_cold_timeToFirstFrame()
+            streaming_measuring.get_cold_timeToFirstFrame()
             del streaming_measuring
 
         elif test_case["test_case"] == "yolo":

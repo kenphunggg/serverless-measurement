@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import threading
 import urllib.request
 from typing import Dict, List, Optional, Tuple
 
@@ -417,6 +418,65 @@ def query_url_post_image(url: str, image_path: str) -> dict | None:
             time.sleep(2)
 
 
+class KnativePinger:
+    """
+    Manages a background thread that continuously pings a Knative service 
+    to prevent it from scaling to zero.
+    """
+    def __init__(self, url: str, ping_interval: int = 5):
+        self.url = url
+        # Ping interval in seconds (default: 5s)
+        self.ping_interval = ping_interval 
+        # Event used to signal the background thread to stop
+        self._stop_event = threading.Event()
+        # The actual thread object
+        self._thread = threading.Thread(target=self._run_pinger, daemon=True)
+        logging.info(f"Knative Pinger initialized for URL: {self.url} with interval: {self.ping_interval}s")
+
+
+    def _run_pinger(self):
+        """The main loop executed by the background thread."""
+        while not self._stop_event.is_set():
+            try:
+                # Send a non-blocking GET request
+                response = requests.get(self.url, timeout=15)
+                
+                if response.status_code == 200:
+                    logging.info(f"Keep-Alive successful. Status: {response.status_code}")
+                else:
+                    logging.warning(f"Keep-Alive received non-200 status: {response.status_code}")
+                    
+            except requests.exceptions.RequestException as e:
+                # Log an error if the request fails completely (connection refused, DNS error, etc.)
+                logging.error(f"Keep-Alive request failed: {e}")
+
+            # Wait for the interval OR until the stop event is set.
+            # wait() returns True if the event is set, False if the timeout occurs.
+            self._stop_event.wait(self.ping_interval)
+
+
+    def start(self):
+        """Starts the background pinging thread."""
+        if not self._thread.is_alive():
+            self._thread.start()
+            logging.info("Knative Pinger thread started.")
+        else:
+            logging.warning("Pinger thread is already running.")
+
+
+    def stop(self):
+        """Signals the background thread to stop and waits for it to join."""
+        logging.info("Stopping Knative Pinger thread...")
+        self._stop_event.set() # Set the event to break the while loop in _run_pinger
+        
+        # Wait for the thread to finish its current loop and terminate
+        if self._thread.is_alive():
+            self._thread.join()
+            logging.info("Knative Pinger thread stopped successfully.")
+        else:
+            logging.warning("Pinger thread was not running.")
+
+
 def get_time_to_first_frame_warm(
     url: str,
     wait_timeout: float = 6000.0,
@@ -493,65 +553,32 @@ def get_time_to_first_frame_warm(
 
 def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | None:
     """
-    Waits for a stream to become available (HTTP 200) and then
-    measures the time it takes for ffmpeg to connect and decode the first frame.
-
-    Args:
-        url: The URL of the video stream to test.
-        wait_timeout: The maximum time in seconds to wait for the stream to become available before giving up.
-
-    Returns:
-        The time to the first frame in seconds (float),
-        or None if an error occurred or the wait timed out.
+    Measures the time it takes for ffmpeg to connect and decode the first frame,
+    including the time spent waiting for the stream to become available.
     """
-    # --- Part 1: Wait for the stream to be ready ---
-    # This loop replicates: `while [ $(curl...) -ne 200 ]; do sleep 0.1; done`
     start_time = time.monotonic()
-    logging.info(f"Waiting for stream to be ready at {url}...")
-    i = 0
-    while True:
-        logging.info(f"Try connecting to streaming service [{i} times]")
-        i += 1
-        # Check if we've waited too long
-        if time.monotonic() - start_time > wait_timeout:
-            logging.error(
-                f"Timeout: Waited longer than {wait_timeout}s for URL to be ready."
-            )
-            return None
-        try:
-            # Use a HEAD request for efficiency, just like `curl --head`
-            response = requests.head(url, timeout=2)
-            if response.status_code == 200:
-                logging.info("Stream is ready (HTTP 200 OK). Proceeding with ffmpeg.")
-                break  # Exit the loop and continue to ffmpeg
-        except requests.RequestException as e:
-            logging.warning(f"Connection failed, retrying in 1 second... Error: {e}")
-            time.sleep(1)
-            # Ignore connection errors and just retry
-            pass
-
-        time.sleep(2)
-
-    # --- Part 2: Time the ffmpeg process ---
-    # This is the `&& time ffmpeg ...` part
+    
+    # --- Part 1 & 2 Combined: Time the polling ffmpeg process ---
     command = [
+        # Ensure you use the absolute path if 'ffmpeg' is not in PATH
         "ffmpeg",
-        "-i",
-        url,
-        "-vframes",
-        "1",  # Exit after processing the first frame
-        "-f",
-        "null",  # Discard the frame data
-        "-",
+        "-i", url,
+        "-vframes", "1",
+        "-f", "null", "-",
+        # Use ffmpeg's internal timeout to limit connection attempts, set it to the total remaining time
+        "-rw_timeout", str(int(wait_timeout * 1_000_000)) 
     ]
 
     try:
+        logging.info(f"Attempting to connect and decode the first frame from {url}...")
+        
         subprocess.run(
             command,
-            capture_output=True,  # Captures stdout and stderr
-            text=True,  # Decodes output as text
-            check=True,  # Raises an error if ffmpeg fails
-            timeout=30,  # Add a timeout for the ffmpeg process itself
+            capture_output=True,
+            text=True,
+            check=True,
+            # Set the Python timeout to the maximum allowed wait_timeout
+            timeout=wait_timeout
         )
 
         end_time = time.monotonic()
@@ -563,17 +590,20 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
         return duration
 
     except subprocess.CalledProcessError as e:
-        logging.error(f"ffmpeg failed for URL: {url}")
-        logging.error(f"FFmpeg STDERR:\n{e.stderr}")
+        # ffmpeg failed (e.g., stream never appeared)
+        logging.error(f"ffmpeg failed after {time.monotonic() - start_time:.2f}s for URL: {url}")
+        logging.error(f"FFmpeg STDERR:\n{e.stderr.strip()}")
         return None
     except subprocess.TimeoutExpired:
-        logging.error(f"ffmpeg timed out for URL: {url}")
+        # Python subprocess timeout exceeded the wait_timeout
+        logging.error(f"ffmpeg timed out after {wait_timeout}s for URL: {url}")
         return None
     except FileNotFoundError:
         logging.error(
-            "ffmpeg command not found. Is it installed and in your system's PATH?"
+            "ffmpeg command not found. Install it or use the absolute path."
         )
         return None
+
 
 def get_fps_bitrate(stream_url, num_samples=100):
     """

@@ -7,7 +7,7 @@ spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/min-scale: '0'
+        autoscaling.knative.dev/min-scale: '1'
         autoscaling.knative.dev/max-scale: '1'
         autoscaling.knative.dev/window: "10s"
     spec:
@@ -24,23 +24,12 @@ spec:
           periodSeconds: 5
         env:
         - name: SOURCE_IP
-          value: "192.168.17.130:2000"
+          value: "192.168.253.129:2000"
         - name: SCALE_VALUE
           value: "1280x720"
         - name: RTMP_TARGET
           value: "rtmp://0.0.0.0:1935/live/stream"
-
----
-# apiVersion: v1
-# kind: Service
-# metadata:
-#   name: measure-streaming-rtmp
-#   namespace: serverless
-# spec:
-#   selector:
-#     # Make sure this label matches your Pod's label found in step 1
-#     serving.knative.dev/service: measure-streaming
-#   ports:
-#     - protocol: TCP
-#       port: 1935
-#       targetPort: 1935
+        resources:
+          limits:
+            cpu: 100m       
+            memory: 2Gi   

@@ -1048,3 +1048,98 @@ class K8sAPI:
                 # Handle other potential errors (e.g., regex issues, config problems)
                 logging.error(f"An unexpected error occurred: {e}")
                 # return []
+
+    @staticmethod
+    def get_ksvc_pod_ip(
+        ksvc_name: str, 
+        namespace: str, 
+        timeout_seconds: int = 300, 
+        retry_interval_seconds: int = 0
+    ) -> str | None:
+        """
+        Continuously checks for and retrieves the IP address of a running Pod 
+        associated with a given Knative Service (Ksvc) until a timeout is reached.
+
+        Args:
+            ksvc_name: The name of the Knative Service (kservice).
+            namespace: The namespace where the Ksvc resides.
+            timeout_seconds: Maximum time (in seconds) to wait for the Pod to start.
+            retry_interval_seconds: Time (in seconds) to wait between checks.
+
+        Returns:
+            The IP address (str) of a running pod, or None if the timeout expires.
+        """
+        
+        # 1. Load Kubernetes Configuration
+        try:
+            config.load_kube_config()
+        except config.ConfigException:
+            logging.warning("Failed to load kubeconfig. Trying in-cluster config.")
+            try:
+                config.load_incluster_config()
+            except config.ConfigException:
+                logging.error("Failed to load any Kubernetes configuration.")
+                return None
+
+        v1_custom = client.CustomObjectsApi()
+        v1_core = client.CoreV1Api()
+        
+        # --- Step 1: Get the Ksvc UID and Setup Selector ---
+        try:
+            # Get the Ksvc to ensure it exists and to get its UID if needed, 
+            # though the service name label is usually sufficient.
+            v1_custom.get_namespaced_custom_object(
+                group="serving.knative.dev",
+                version="v1",
+                plural="services", 
+                name=ksvc_name,
+                namespace=namespace,
+            )
+        except ApiException as e:
+            if e.status == 404:
+                logging.error(f"Ksvc '{ksvc_name}' not found in namespace '{namespace}'.")
+            else:
+                logging.error(f"Error retrieving Ksvc: {e}")
+            return None
+        
+        # The standard Knative label selector for Pods belonging to this service
+        label_selector = f"serving.knative.dev/service={ksvc_name}"
+        
+        logging.info(f"Starting watch for Pod IP (Timeout: {timeout_seconds}s)...")
+        
+        start_time = time.time()
+        
+        # --- Step 2: Retry Loop to Check Pod Status ---
+        while time.time() - start_time < timeout_seconds:
+            try:
+                # List Pods matching the selector
+                pods = v1_core.list_namespaced_pod(
+                    namespace=namespace,
+                    label_selector=label_selector
+                )
+                
+                for pod in pods.items:
+                    # Check for the desired state: Running and has an IP address
+                    if pod.status.phase == "Running" and pod.status.pod_ip:
+                        pod_ip = pod.status.pod_ip
+                        logging.info(f"Pod '{pod.metadata.name}' is RUNNING. IP found: {pod_ip}")
+                        return pod_ip
+                    
+                    # Report if we found a Pod, but it's still initializing
+                    if pod.status.phase in ["Pending", "ContainerCreating"]:
+                        logging.warning(f"Pod '{pod.metadata.name}' found but is in phase: {pod.status.phase}. Waiting...")
+                
+                # If no Pods were found, or all were non-running/non-ready
+                if not pods.items:
+                    logging.warning("No Pods currently found for the service. Waiting for Knative to scale up...")
+                
+            except ApiException as e:
+                logging.error(f"Kubernetes API error while listing pods: {e}")
+                return None # Exit on hard API error
+
+            # Wait for the next check
+            time.sleep(retry_interval_seconds)
+
+        # --- Step 3: Timeout ---
+        logging.error(f"Timeout reached ({timeout_seconds}s). Could not retrieve a running Pod IP for Ksvc '{ksvc_name}'.")
+        return None

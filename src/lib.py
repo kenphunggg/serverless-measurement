@@ -7,7 +7,8 @@ import time
 import urllib.error
 import threading
 import urllib.request
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
+import select
 
 import requests
 
@@ -163,7 +164,7 @@ class CreateResultFile:
             test_case="2_2_bitrate_fps",
             nodename=nodename,
             filename=filename,
-            header="fps\n",
+            header="fps,bitrate(kbit/s)\n",
         )
 
     @staticmethod
@@ -604,166 +605,146 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
         )
         return None
 
+# def _time_to_seconds(time_str: str) -> float:
+#     """Converts FFmpeg's time format 'HH:MM:SS.ms' to total seconds."""
+#     try:
+#         h, m, s_ms = map(float, time_str.split(':'))
+#         return h * 3600 + m * 60 + s_ms
+#     except ValueError:
+#         return 0.0
 
-def get_fps_bitrate(stream_url, num_samples=100):
+# def _time_to_seconds(time_str: str) -> float:
+#     # ... (definition as before) ...
+#     h, m, s_ms = map(float, time_str.split(':'))
+#     return h * 3600 + m * 60 + s_ms
+
+
+
+def get_fps_bitrate(stream_url: str, samples_needed: int) -> Tuple[List[float], List[float]]:
     """
-    Analyzes a stream URL with FFmpeg and captures both FPS and Bitrate samples.
+    Runs the FFmpeg monitoring command (with -f mp4 /dev/null) to extract 
+    real-time FPS and reported bitrate data, while attempting to suppress 
+    duplicate frames.
 
     Args:
-        stream_url (str): The URL of the video stream to analyze.
-        num_samples (int): The number of valid samples to collect.
+        stream_url: The RTMP URL of the live stream.
+        samples_needed: The target number of data points to collect.
 
     Returns:
-        tuple: (fps_values, bitrate_values)
-               - fps_values (list of floats): Captured FPS.
-               - bitrate_values (list of floats): Captured Bitrate in kbits/s.
-               Returns ([], []) if the process fails or times out.
+        A tuple containing two lists of floats: 
+        (list of FPS values, list of bitrate values in kbits/s).
     """
+    # --- REVISED REGEX and HELPER FUNCTION (omitted for brevity) ---
+    def _parse_bitrate(bitrate_str: str) -> float:
+        """Converts FFmpeg's bitrate string (e.g., '7630.7kbits/s') into a float value in kbits/s."""
+        match = re.match(r'([\d\.]+)([kM])bits\/s', bitrate_str, re.IGNORECASE)
+        if not match:
+            return 0.0
 
-    # --- 1. Pre-flight Check: Wait for the stream to be ready ---
-    # NOTE: urllib only supports HTTP/HTTPS. We skip this check for RTMP/RTSP
-    # to prevent "unknown url type" errors.
-    if stream_url.startswith(("http://", "https://")):
-        STREAM_CHECK_TIMEOUT_SECONDS = 60  # Adjusted to 60s for sanity
-        STREAM_CHECK_INTERVAL_SECONDS = 5
-        stream_ready = False
-        check_start_time = time.time()
+        value_str, unit = match.groups()
+        value = float(value_str)
 
-        logging.info(f"Verifying stream URL is ready: {stream_url}")
+        # Convert everything to Kilobits per second (kbits/s)
+        if unit.upper() == 'M': 
+            return value * 1000.0
+        return value
 
-        while time.time() - check_start_time < STREAM_CHECK_TIMEOUT_SECONDS:
-            try:
-                req = urllib.request.Request(stream_url, method="HEAD")
-                req.add_header("User-Agent", "Mozilla/5.0")
-
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    if response.status == 200:
-                        logging.info("  -> Stream is ready (HTTP 200 OK).")
-                        stream_ready = True
-                        break
-                    else:
-                        logging.info(f"  -> Stream not ready (HTTP {response.status}). Retrying...")
-            except (urllib.error.HTTPError, urllib.error.URLError, Exception) as e:
-                logging.info(f"  -> Stream check failed ({e}). Retrying...")
-
-            time.sleep(STREAM_CHECK_INTERVAL_SECONDS)
-
-        if not stream_ready:
-            logging.error("FATAL: Stream not ready (HTTP check failed). Aborting.")
-            return [], []
-    else:
-        logging.info(f"Skipping HTTP pre-flight check for non-HTTP protocol: {stream_url}")
-
-    # --- 2. FFmpeg Analysis ---
-    STARTUP_TIMEOUT_SECONDS = 30
-    INACTIVITY_TIMEOUT_SECONDS = 30
-
-    command = [
-        "ffmpeg",
-        "-loglevel", "error",
-        "-stats",       # Essential for getting progress info on stderr
-        "-i", stream_url,
-        "-f", "null",   # Null muxer (discard output)
-        "-"
+    STATUS_LINE_REGEX: re.Pattern = re.compile(
+        r'frame=\s*\d+\s+.*?'
+        r'fps=\s*(\d+\.?\d*)'                      # Group 1: FPS (e.g., 58)
+        r'.*?'
+        r'bitrate=\s*([\d\.]+[kM]bits\/s)'         # Group 2: Bitrate (e.g., 7630.7kbits/s)
+        r'.*?$',
+        re.IGNORECASE | re.DOTALL
+    )
+    
+    # --- FFMPEG COMMAND ---
+    FFMPEG_COMMAND: List[str] = [
+        'ffmpeg',
+        '-i',
+        stream_url,
+        
+        # 🟢 ADDED: Video filter to drop non-frame data, which helps reduce duplication
+        # '-filter:v',
+        # 'dropdata',
+        
+        '-stats_period',
+        '1',
+        '-f',
+        'mp4',
+        '/dev/null',
+        '-y' # For non-interactive use
     ]
 
-    logging.info(f"🚀 Analyzing stream to capture {num_samples} samples...")
-
-    # Regex for FPS: matches "fps= 30" or "fps=30.5"
-    fps_pattern = re.compile(r"fps=\s*([\d.]+)")
-    # Regex for Bitrate: matches "bitrate= 1200.5kbits/s"
-    bitrate_pattern = re.compile(r"bitrate=\s*([\d.]+)\s*kbits/s")
-
-    fps_samples = []
-    bitrate_samples = []
-    all_stderr_lines = []
-
-    process = None
+    fps_list: List[float] = []
+    bitrate_list: List[float] = []
+    process: Any = None
+    
+    logging.info(f"🎬 Starting FFmpeg process to analyze stream...")
+    logging.info(f"Targeting: {stream_url}")
+    logging.info(f"Collecting {samples_needed} samples...")
 
     try:
         process = subprocess.Popen(
-            command,
+            FFMPEG_COMMAND,
+            stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            encoding="utf-8",
-            errors="replace",
-            universal_newlines=True 
+            encoding='utf-8'
         )
-
-        start_time = time.time()
-        last_output_time = start_time
-
-        while len(fps_samples) < num_samples:
-            if process.poll() is not None:
-                logging.warning("⚠️ FFmpeg process terminated unexpectedly.")
+        
+        # Read output in real-time
+        for line in process.stderr:
+            if len(fps_list) >= samples_needed:
+                logging.info(f"✅ Target of {samples_needed} samples reached.")
                 break
-
-            current_time = time.time()
-
-            # Timeouts
-            if not fps_samples and (current_time - start_time > STARTUP_TIMEOUT_SECONDS):
-                logging.error("Timeout: No data received during startup.")
-                break
-            if fps_samples and (current_time - last_output_time > INACTIVITY_TIMEOUT_SECONDS):
-                logging.warning("Timeout: Stream inactive.")
-                break
-
-            # Non-blocking read is hard in simple Python without threads/select, 
-            # but readline() usually blocks until a newline or buffer fills. 
-            # Given FFmpeg updates stats via \r, this relies on Python handling \r as newlines 
-            # or FFmpeg outputting often enough.
-            line = process.stderr.readline()
             
-            if line:
-                last_output_time = time.time()
-                line_content = line.strip()
-                all_stderr_lines.append(line_content)
-
-                # Extract Data
-                fps_match = fps_pattern.search(line_content)
-                bitrate_match = bitrate_pattern.search(line_content)
-
-                if fps_match and bitrate_match:
-                    try:
-                        val_fps = float(fps_match.group(1))
-                        val_bitrate = float(bitrate_match.group(1))
-
-                        # Simple filter: ignore 0 fps or 0 bitrate which often happens at start
-                        if val_fps > 0 and val_bitrate > 0:
-                            fps_samples.append(val_fps)
-                            bitrate_samples.append(val_bitrate)
-
-                            # Progress Bar
-                            msg = f" -> Sample {len(fps_samples)}/{num_samples}: {val_fps:.1f} fps, {val_bitrate:.0f} kbits/s"
-                            sys.stdout.write(f"\r{msg:<80}")
-                            sys.stdout.flush()
-
-                    except ValueError:
-                        continue
-            else:
-                # Check if process is still alive if we got no line
-                if process.poll() is not None:
-                    break
-                time.sleep(0.05) # Prevent busy loop if waiting for output
-
-        print() # Newline after progress
-        logging.info("✅ Sample collection finished.")
+            match = STATUS_LINE_REGEX.search(line)
+            
+            if match:
+                # Group 1 (FPS), Group 2 (Bitrate String)
+                fps_str, bitrate_str = match.group(1), match.group(2)
+                
+                try:
+                    fps_value = float(fps_str)
+                    bitrate_value = _parse_bitrate(bitrate_str)
+                    
+                    # --- Append Data ---
+                    fps_list.append(fps_value)
+                    bitrate_list.append(bitrate_value)
+                    
+                    logging.debug(f"Collected {len(fps_list)}/{samples_needed} samples. FPS: {fps_value:.2f} | Bitrate: {bitrate_value:.2f} kbits/s")
+                    
+                except ValueError:
+                    logging.warning(f"Failed to convert data from line: {line.strip()}. Skipping sample.")
+                    continue 
 
     except FileNotFoundError:
-        logging.error("Error: 'ffmpeg' command not found.")
-        return [], []
+        logging.error("❌ FFmpeg command not found. Ensure FFmpeg is installed and in your system PATH.")
     except Exception as e:
-        logging.error(f"Unexpected error: {e}")
-        return [], []
+        logging.error(f"❌ An unexpected error occurred: {e}", exc_info=True)
     finally:
+        # Terminate the FFmpeg process cleanly using the robust shutdown logic
         if process and process.poll() is None:
+            logging.info("Shutting down FFmpeg process...")
+            
             process.terminate()
+            
             try:
-                process.wait(timeout=5)
+                # Wait briefly for graceful exit
+                process.wait(timeout=0.5) 
             except subprocess.TimeoutExpired:
+                logging.warning("FFmpeg process is hanging, forcing kill.")
+                # Forceful clear and kill if termination failed
+                try:
+                    if process.stderr: process.stderr.read() 
+                    if process.stdout: process.stdout.read()
+                except:
+                    pass
                 process.kill()
+                process.wait()
 
-    return fps_samples, bitrate_samples
+    return fps_list, bitrate_list
+
 
 
 def query_url(url: str, max_retries: int = 3) -> dict | None:

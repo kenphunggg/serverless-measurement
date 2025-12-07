@@ -61,9 +61,9 @@ if __name__ == "__main__":
             )
             # streaming_measuring.baseline()
             # streaming_measuring.get_warm_timeToFirstFrame()
-            # streaming_measuring.get_fps()
+            streaming_measuring.get_fps()
             # streaming_measuring.get_hardware_resource()
-            streaming_measuring.get_cold_timeToFirstFrame()
+            # streaming_measuring.get_cold_timeToFirstFrame()
             del streaming_measuring
 
         elif test_case["test_case"] == "yolo":

@@ -3,6 +3,7 @@ import logging
 import subprocess
 import time
 from threading import Thread
+import pandas as pd
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -302,18 +303,20 @@ class StreamingMeasuring:
 
                     time.sleep(self.cool_down_time)
 
+                    pod_ip = K8sAPI.get_ksvc_pod_ip(ksvc_name=self.ksvc_name, namespace=self.namespace)
+
                     # 4. Execute ffmpeg command to receive video from source and get fps
                     logging.info("Start catching fps/bitrate of streaming service")
                     # 4.1. Unpack the two lists returned by the updated function
                     fps_list, bitrate_list = get_fps_bitrate(
-                        stream_url=f"rtmp://{self.ksvc_name}.{self.namespace}/{self.cluster_info.streaming_info.streaming_uri}",
-                        num_samples=self.curl_time,
+                        stream_url=f"rtmp://{pod_ip}:1935/live/stream",
+                        samples_needed=self.curl_time,
                     )
 
                     # 4.2. Log summary statistics (optional, but good for debugging)
                     if fps_list:
                         avg_fps = sum(fps_list) / len(fps_list)
-                        avg_bitrate = sum(bitrate_list) / len(bitrate_list)
+                        avg_bitrate = sum(bitrate_list) / len(bitrate_list) if bitrate_list else 0.0
                         logging.info(f"Captured {len(fps_list)} samples.")
                         logging.info(f"Stats -> Avg FPS: {avg_fps:.2f} | Avg Bitrate: {avg_bitrate:.0f} kbits/s")
                     else:
@@ -1024,60 +1027,78 @@ class PlotResult:
         plt.savefig(output_file)
 
     @staticmethod
-    def bitrate_fps(result_file, output_file):
-        logging.info("Start plot hardware usage of streaming service")
-        # bitrate_data = []
-        fps_data = []
+    def bitrate_fps(result_file: str, output_file: str):
+        """
+        Reads FPS and Bitrate data from a CSV file and generates side-by-side 
+        Box Plots to visualize the distribution of both metrics.
+
+        Args:
+            result_file: The path to the CSV file containing the data.
+            output_file: The path to save the generated plot image.
+        """
+        logging.info("Start plotting FPS and Bitrate distribution (Box Plots)")
+        
         try:
-            with open(result_file, "r", newline="") as file:
-                reader = csv.reader(file)
-                next(reader)
-                for row in reader:
-                    if row:
-                        try:
-                            fps_data.append(float(row[0]))
-                        except (ValueError, IndexError):
-                            logging.warning(
-                                f"Warning: Skipping invalid row or value: {row}"
-                            )
+            # Use pandas to read the CSV
+            df = pd.read_csv(result_file, header=None, names=['FPS', 'Bitrate'])
+            
+            if df.empty:
+                logging.error(f"Error: The CSV file '{result_file}' is empty or contains no data rows.")
+                return
+
+            # Ensure data is numerical and clean up
+            df['FPS'] = pd.to_numeric(df['FPS'], errors='coerce')
+            df['Bitrate'] = pd.to_numeric(df['Bitrate'], errors='coerce')
+            df.dropna(inplace=True)
+
+            if df.empty:
+                logging.error("Error: All data rows were invalid or non-numeric after cleaning.")
+                return
+
+            fps_data = df['FPS'].values
+            bitrate_data = df['Bitrate'].values
+            
         except FileNotFoundError:
             logging.error(f"Error: The file '{result_file}' was not found.")
             return
-        except StopIteration:
-            # This happens if the CSV is empty or only has a header
-            logging.error(
-                f"Error: The CSV file '{result_file}' is empty or contains only a header."
-            )
-            return
         except Exception as e:
-            logging.error(f"An error occurred: {e}")
+            logging.error(f"An error occurred while reading the CSV: {e}")
             return
 
-        data = [fps_data]
-        data = [np.array(fps_data)]
+        # --- Plotting ---
+        
+        # Create figure and two subplots (1 row, 2 columns) for side-by-side comparison
+        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
+        fig.suptitle("Distribution of FPS and Bitrate Metrics", fontsize=16)
 
-        fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(10, 6))
-        fig.suptitle(
-            "Streaming service",
-            fontsize=16,
-        )
+        # --- Plot 1: FPS Box Plot ---
+        axes[0].boxplot([fps_data], patch_artist=True, boxprops=dict(facecolor='tab:blue'))
+        axes[0].set_title("FPS Distribution")
+        axes[0].set_ylabel("Frames Per Second")
+        axes[0].set_xticklabels(["FPS"])
+        axes[0].grid(axis='y', linestyle='--', alpha=0.7)
+        
+        # Add mean FPS line
+        mean_fps = np.mean(fps_data)
+        axes[0].axhline(mean_fps, color='black', linestyle=':', linewidth=1.5, label=f'Mean: {mean_fps:.2f}')
+        axes[0].legend(loc='lower left')
 
-        # Plot data on each subplot
+        # --- Plot 2: Bitrate Box Plot ---
+        axes[1].boxplot([bitrate_data], patch_artist=True, boxprops=dict(facecolor='tab:red'))
+        axes[1].set_title("Bitrate Distribution")
+        axes[1].set_ylabel("Bitrate (kbits/s)")
+        axes[1].set_xticklabels(["Bitrate"])
+        axes[1].grid(axis='y', linestyle='--', alpha=0.7)
 
-        # Add this line to set tighter Y-axis limits
-        # padding_cpu = (data[0].max() - data[0].min()) * 0.5  # 50% padding
-        # axes[0].set_ylim(data[0].min() - padding_cpu, data[0].max() + padding_cpu)
+        # Add mean Bitrate line
+        mean_bitrate = np.mean(bitrate_data)
+        axes[1].axhline(mean_bitrate, color='black', linestyle=':', linewidth=1.5, label=f'Mean: {mean_bitrate:.2f}')
+        axes[1].legend(loc='lower left')
 
-        axes.boxplot(data[0])
-        axes.set_title("FPS Distribution")
-        axes.set_ylabel("frame per second")
-        axes.set_xticklabels(["FPS"])
-        # Add this line to set tighter Y-axis limits
-        # padding_mem = (data[1].max() - data[1].min()) * 0.5  # 50% padding
-        # axes[1].set_ylim(data[1].min() - padding_mem, data[1].max() + padding_mem)
 
         # Adjust layout to prevent titles and labels from overlapping
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0, 1, 0.96]) 
 
         # Save the figure to a file
         plt.savefig(output_file)
+        logging.info(f"Plot saved to {output_file}")

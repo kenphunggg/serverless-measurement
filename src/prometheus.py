@@ -131,53 +131,66 @@ class Prometheus:
         return Prometheus.query(query=query_network_receive, prom_server=prom_server)
 
     @staticmethod
-    def queryPodCPU(namespace: str, prom_server: str):
+    def queryPodCPU(namespace: str, prom_server: str, nodename: str):
         """
-        query cpu usage in (mCPU)
+        Query CPU usage in (mCPU) for pods on a specific node.
+        
         Args:
             namespace (str): pod namespace
+            prom_server (str): Prometheus server address/URL
+            nodename (str): Name of the Kubernetes node (instance label)
         """
 
-        # Query for real-time CPU usage for ALL pods in the namespace
-        query_cpu_url = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!=""}}[5m])) by (pod)'
+        # Query for real-time CPU usage for pods in the namespace AND on the specified node
+        # The filter 'instance=~"{nodename}:.*"' selects metrics associated with the node's instance label
+        query_cpu_url = f'sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}", container!="", node="{nodename}"}}[1m])) by (pod)'
 
         return Prometheus.query(query=query_cpu_url, prom_server=prom_server)
 
     @staticmethod
-    def queryPodMemory(namespace: str, prom_server: str):
+    def queryPodMemory(namespace: str, prom_server: str, nodename: str):
         """
-        query memory usage in (MegaByte)
+        Query memory usage in (Byte) for pods on a specific node.
+        
         Args:
             namespace (str): namespace of pod
+            prom_server (str): Prometheus server address/URL
+            nodename (str): Name of the Kubernetes node (instance label)
         """
 
-        # Query for real-time memory usage for ALL pods in the namespace
-        query_memory_url = f'sum(container_memory_usage_bytes{{namespace="{namespace}", container!=""}}) by (pod)'
+        # Query for real-time memory usage for pods in the namespace AND on the specified node
+        query_memory_url = f'sum(container_memory_usage_bytes{{namespace="{namespace}", container!="", node="{nodename}"}}) by (pod)'
 
         return Prometheus.query(query=query_memory_url, prom_server=prom_server)
 
     @staticmethod
-    def queryPodNetworkIn(namespace: str, prom_server: str):
+    def queryPodNetworkIn(namespace: str, prom_server: str, nodename: str):
         """
-        query *network in* in (MBps)
+        Query *network in* in (Bps) for pods on a specific node.
+        
         Args:
             namespace (str): pod namespace
+            prom_server (str): Prometheus server address/URL
+            nodename (str): Name of the Kubernetes node (instance label)
         """
 
-        # Query for real-time CPU usage for ALL pods in the namespace
-        query_net_in_url = f'sum(rate(container_network_receive_bytes_total{{namespace="{namespace}"}}[5m])) by (pod)'
+        # Query for real-time network in for ALL pods in the namespace AND on the specified node
+        query_net_in_url = f'sum(rate(container_network_receive_bytes_total{{namespace="{namespace}", node="{nodename}"}}[5m])) by (pod)'
 
         return Prometheus.query(query=query_net_in_url, prom_server=prom_server)
 
     @staticmethod
-    def queryPodNetworkOut(namespace: str, prom_server: str):
+    def queryPodNetworkOut(namespace: str, prom_server: str, nodename: str):
         """
-        query *network out* in (Bps)
+        Query *network out* in (Bps) for pods on a specific node.
+        
         Args:
-            instance (str): instance ip
+            namespace (str): pod namespace
+            prom_server (str): Prometheus server address/URL
+            nodename (str): Name of the Kubernetes node (instance label)
         """
 
-        # Query for real-time network out for ALL pods in the namespace
-        query_net_out_url = f'sum(rate(container_network_transmit_bytes_total{{namespace="{namespace}"}}[5m])) by (pod)'
+        # Query for real-time network out for ALL pods in the namespace AND on the specified node
+        query_net_out_url = f'sum(rate(container_network_transmit_bytes_total{{namespace="{namespace}", node="{nodename}"}}[5m])) by (pod)'
 
         return Prometheus.query(query=query_net_out_url, prom_server=prom_server)

@@ -203,6 +203,15 @@ class CreateResultFile:
             header="model_loading_time_ms,model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",
         )
 
+    @staticmethod
+    def yolo_resource(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="3_3_yolo_resource",
+            nodename=nodename,
+            filename=filename,
+            header="timestamp,cpu_usage(mCPU),mem_usage(MB),network_in(MBps), network_out(MBps)\n",
+        )
+
 
 def get_curl_metrics(url: str) -> dict | None:
     """

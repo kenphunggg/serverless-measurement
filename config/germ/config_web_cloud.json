@@ -6,7 +6,7 @@
             "replicas": [
                 1
             ],
-            "ksvc_name": "measure-web-cloud",
+            "ksvc_name": "measure-web",
             "arch": "x86",
             "image": "docker.io/lazyken/measure-app:v2@sha256:b391d7ef71ec0812c05fd2d06973103ee95b30c842c4ce4d375f55b36ca19a4a",
             "port": 5000,

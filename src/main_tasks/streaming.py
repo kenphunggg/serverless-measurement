@@ -423,6 +423,7 @@ class StreamingMeasuring:
                         "detection_time": self.detection_time,
                         "cluster_info": self.cluster_info,
                         "result_file": stream_resource_file,
+                        "nodename": self.hostname
                     },
                 )
 
@@ -611,7 +612,7 @@ class StreamingMeasuring:
 
 class GetHardWareUsage:
     @staticmethod
-    def query_prometheus(namespace, detection_time, cluster_info, result_file):
+    def query_prometheus(namespace, detection_time, cluster_info, result_file, nodename):
         logging.info(
             "Start query prometheus to get hardware information when running streaming service"
         )
@@ -621,18 +622,17 @@ class GetHardWareUsage:
         while time.time() - start_time < detection_time:
             logging.info("Collecting prometheus metrics ...")
             cpu = Prometheus.queryPodCPU(
-                namespace=namespace, prom_server=cluster_info.prometheus_ip
+                namespace=namespace, prom_server=cluster_info.prometheus_ip, nodename=nodename
             )
             mem = Prometheus.queryPodMemory(
-                namespace=namespace, prom_server=cluster_info.prometheus_ip
+                namespace=namespace, prom_server=cluster_info.prometheus_ip, nodename=nodename
             )
             networkIn = Prometheus.queryPodNetworkIn(
-                namespace=namespace,
-                prom_server=cluster_info.prometheus_ip,
+                namespace=namespace, prom_server=cluster_info.prometheus_ip, nodename=nodename
             )
             networkOut = Prometheus.queryPodNetworkOut(
                 namespace=namespace,
-                prom_server=cluster_info.prometheus_ip,
+                prom_server=cluster_info.prometheus_ip, nodename=nodename
             )
             with open(result_file, mode="a", newline="") as f:
                 result_value = [

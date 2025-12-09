@@ -2,7 +2,7 @@
     "test_cases": [
         {
             "test_case": "web",
-            "repetition": 2,
+            "repetition": 1,
             "replicas": [
                 1
             ],
@@ -14,7 +14,7 @@
             "hostname": "cloud-node",
             "host_ip": "192.168.253.129",
             "cool_down_time": 30,
-            "curl_time": 2,
+            "curl_time": 5,
             "detection_time": 10,
             "resource_requests": [
                 {

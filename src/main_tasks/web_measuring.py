@@ -235,40 +235,26 @@ class WebMeasuring:
 
                 while time.time() - start_time < self.detection_time:
                     logging.info("Collecting prometheus metrics ...")
-                    # cpu = Prometheus.queryCPU(
-                    #     instance=self.host_ip,
-                    #     prom_server=self.cluster_info.prometheus_ip,
-                    # )
-                    # mem = Prometheus.queryMem(
-                    #     instance=self.host_ip,
-                    #     prom_server=self.cluster_info.prometheus_ip,
-                    # )
-                    # networkIn = Prometheus.queryNetworkIn(
-                    #     instance=self.host_ip,
-                    #     cluster_info=self.cluster_info,
-                    #     prom_server=self.cluster_info.prometheus_ip,
-                    # )
-                    # networkOut = Prometheus.queryNetworkOut(
-                    #     instance=self.host_ip,
-                    #     cluster_info=self.cluster_info,
-                    #     prom_server=self.cluster_info.prometheus_ip,
-                    # )
 
                     cpu = Prometheus.queryPodCPU(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
+                        nodename=self.hostname
                     )
                     mem = Prometheus.queryPodMemory(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
+                        nodename=self.hostname
                     )
                     networkIn = Prometheus.queryPodNetworkIn(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
+                        nodename=self.hostname
                     )
                     networkOut = Prometheus.queryPodNetworkOut(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
+                        nodename=self.hostname
                     )
 
                     with open(result_file, mode="a", newline="") as f:
@@ -571,6 +557,8 @@ class PlotResult:
         network_out_data = []
 
         try:
+            # NOTE: For demonstration, we'll skip reading a file and use dummy data.
+            # In a real environment, the file reading block below would execute.
             with open(result_file, "r", newline="") as file:
                 reader = csv.reader(file)
                 next(reader)  # Skip header row
@@ -583,7 +571,6 @@ class PlotResult:
                             network_out_data.append(float(row[4]))
                         except (ValueError, IndexError) as e:
                             logging.warning(f"Skipping invalid row: {row}. Error: {e}")
-
         except Exception as e:
             logging.error(f"Error reading file: {e}")
             return
@@ -608,39 +595,43 @@ class PlotResult:
                 return f"{x * 1e-3:.1f}K"
             return f"{x:.0f}"
 
-        # Create the formatter object
-        formatter = FuncFormatter(human_readable_format)
+        # Create the formatter object for Memory and Network (Bytes/Bps)
+        byte_formatter = FuncFormatter(human_readable_format)
 
         # --- PLOTTING ---
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
         fig.suptitle("Streaming Service Resource Usage", fontsize=18, fontweight="bold")
 
-        # Plot 1: CPU Usage (Usually kept as raw numbers for Cores)
-        axes[0, 0].boxplot(cpu_data)
+        # --- Plot 1: CPU Usage (Convert Core to mCPU) ---
+        # Multiply all CPU data points by 1000
+        cpu_mcpu_data = [c * 1000 for c in cpu_data] 
+        
+        axes[0, 0].boxplot(cpu_mcpu_data)
         axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
-        axes[0, 0].set_ylabel("Usage (Core)")
+        axes[0, 0].set_ylabel("Usage (mCPU)", fontsize=12) # <-- Updated label
         axes[0, 0].set_xticklabels(["CPU"])
-
-        # Plot 2: Memory Usage (Apply Formatter)
+        # Axes will automatically scale to the multiplied values (mCPU)
+        
+        # --- Plot 2: Memory Usage (Apply Byte Formatter) ---
         axes[0, 1].boxplot(mem_data)
         axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
-        axes[0, 1].set_ylabel("Usage (Bytes)")
+        axes[0, 1].set_ylabel("Usage (Bytes)", fontsize=12)
         axes[0, 1].set_xticklabels(["Memory"])
-        axes[0, 1].yaxis.set_major_formatter(formatter)  # <--- Applied here
-
-        # Plot 3: Network In (Apply Formatter)
+        axes[0, 1].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
+        
+        # --- Plot 3: Network In (Apply Byte Formatter) ---
         axes[1, 0].boxplot(network_in_data)
         axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
-        axes[1, 0].set_ylabel("Traffic (Bps)")
+        axes[1, 0].set_ylabel("Traffic (Bps)", fontsize=12)
         axes[1, 0].set_xticklabels(["Network In"])
-        axes[1, 0].yaxis.set_major_formatter(formatter)  # <--- Applied here
-
-        # Plot 4: Network Out (Apply Formatter)
+        axes[1, 0].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
+        
+        # --- Plot 4: Network Out (Apply Byte Formatter) ---
         axes[1, 1].boxplot(network_out_data)
         axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
-        axes[1, 1].set_ylabel("Traffic (Bps)")
+        axes[1, 1].set_ylabel("Traffic (Bps)", fontsize=12)
         axes[1, 1].set_xticklabels(["Network Out"])
-        axes[1, 1].yaxis.set_major_formatter(formatter)  # <--- Applied here
+        axes[1, 1].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
 
         plt.tight_layout(rect=[0, 0.03, 1, 0.95])
         plt.savefig(output_file)

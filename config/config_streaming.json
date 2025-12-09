@@ -16,13 +16,9 @@
             "hostname": "cloud-node",
             "host_ip": "192.168.253.129",
             "cool_down_time": 30,
-            "curl_time": 3,
+            "curl_time": 30,
             "detection_time": 60,
             "resource_requests": [
-                {
-                    "cpu": 0,
-                    "memory": 0
-                },
                 {
                     "cpu": "100m",
                     "memory": "2Gi"

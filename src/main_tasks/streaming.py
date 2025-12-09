@@ -301,8 +301,6 @@ class StreamingMeasuring:
                         logging.info("Waiting for pods to be ready ...")
                         time.sleep(2)
 
-                    time.sleep(self.cool_down_time)
-
                     pod_ip = K8sAPI.get_ksvc_pod_ip(ksvc_name=self.ksvc_name, namespace=self.namespace)
 
                     # 4. Execute ffmpeg command to receive video from source and get fps
@@ -310,7 +308,7 @@ class StreamingMeasuring:
                     # 4.1. Unpack the two lists returned by the updated function
                     fps_list, bitrate_list = get_fps_bitrate(
                         stream_url=f"rtmp://{pod_ip}:1935/live/stream",
-                        samples_needed=self.curl_time,
+                        sample_needed=self.curl_time*10,
                     )
 
                     # 4.2. Log summary statistics (optional, but good for debugging)

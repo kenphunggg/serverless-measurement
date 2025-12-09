@@ -6,7 +6,7 @@
             "replicas": [
                 1
             ],
-            "ksvc_name": "measure-web",
+            "ksvc_name": "measure-web-cloud",
             "arch": "x86",
             "image": "docker.io/lazyken/measure-app:v2@sha256:b391d7ef71ec0812c05fd2d06973103ee95b30c842c4ce4d375f55b36ca19a4a",
             "port": 5000,
@@ -73,7 +73,7 @@
         }
     ],
     "prometheus": {
-        "server_ip": "172.16.42.13",
+        "server_ip": "prometheus-grafana-stack-k-prometheus.monitoring.svc.cluster.local",
         "port": 9090,
         "interface": "enp0s25"
     },

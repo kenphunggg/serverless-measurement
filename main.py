@@ -24,7 +24,7 @@ GERM_YOLO_CONFIG_EDGE_PATH = "config/germ/config_yolo_edge.json"
 
 
 # ---------- CONFIG FILE ----------
-CONFIG_FILE = TEST_WEB_CONFIG_PATH
+CONFIG_FILE = TEST_YOLO_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -69,8 +69,8 @@ if __name__ == "__main__":
         elif test_case["test_case"] == "yolo":
             yolo_measuring = YoloMeasuring(config=test_case, cluster_info=my_cluster)
             # yolo_measuring.get_yolo_detection_warm()
-            yolo_measuring.get_yolo_detection_cold()
-            # yolo_measuring.get_hardware_usage()
+            # yolo_measuring.get_yolo_detection_cold()
+            yolo_measuring.get_warm_hardware_usage()
             del yolo_measuring
 
     end_time = datetime.datetime.now()

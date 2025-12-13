@@ -30,7 +30,7 @@
         }
     ],
     "prometheus": {
-        "server_ip": "localhost",
+        "server_ip": "prometheus-grafana-stack-k-prometheus.monitoring.svc.cluster.local",
         "port": 9090,
         "interface": "ens33"
     },

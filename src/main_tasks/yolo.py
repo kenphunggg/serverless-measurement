@@ -1,6 +1,8 @@
 import csv
 import logging
 import time
+import threading
+from matplotlib.ticker import FuncFormatter
 
 import matplotlib.pyplot as plt
 
@@ -328,17 +330,18 @@ class YoloMeasuring:
                 )
 
                 # 2. Deploy ksvc for measuring
-                K8sAPI.deploy_ksvc_web(
-                    ksvc_name=self.ksvc_name,
-                    namespace=self.namespace,
-                    image=self.image,
-                    port=self.port,
-                    hostname=self.hostname,
-                    window_time=100,
-                    min_scale=replica,
-                    max_scale=replica,
-                    database_info=self.cluster_info.database_info,
-                )
+                window_time = 20
+                K8sAPI.deploy_ksvc_yolo(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=window_time,
+                        min_scale=replica,
+                        max_scale=replica,
+                        rtmp_stream_url=self.rtmp_stream_url,
+                    )
 
                 # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
                 while True:
@@ -351,57 +354,85 @@ class YoloMeasuring:
                         break
                     logging.info("Waiting for pods to be ready ...")
                     time.sleep(2)
+                time.sleep(5)
+                
+                logging.info("Testing if model already loaded")
+                query_url_post_image(
+                            url=f"http://{self.ksvc_name}.{self.namespace}/detect",
+                            image_path="config/img/4k.jpg",
+                            )
 
-                time.sleep(self.cool_down_time)
+                logging.info("Model loaded")
 
                 # 4. Query url on app to trigger task then query Prometheus to get CPU and Mem usage of that action for *detection_time* seconds
                 logging.info(
                     "Start query prometheus to get hardware information when running web service"
                 )
-                start_time = time.time()
-                url = f"http://{self.ksvc_name}.{self.namespace}/list-students?duration={self.detection_time}"
-                query_url(url=url)
+                done_detecting = threading.Event()
 
-                while time.time() - start_time < self.detection_time:
-                    logging.info("Collecting prometheus metrics ...")
 
-                    cpu = Prometheus.queryPodCPU(
-                        namespace=self.namespace,
-                        prom_server=self.cluster_info.prometheus_ip,
-                    )
-                    mem = Prometheus.queryPodMemory(
-                        namespace=self.namespace,
-                        prom_server=self.cluster_info.prometheus_ip,
-                    )
-                    networkIn = Prometheus.queryPodNetworkIn(
-                        namespace=self.namespace,
-                        prom_server=self.cluster_info.prometheus_ip,
-                    )
-                    networkOut = Prometheus.queryPodNetworkOut(
-                        namespace=self.namespace,
-                        prom_server=self.cluster_info.prometheus_ip,
-                    )
+                def yolo_detection():
+                    logging.info(f"Start detecting image using yolo in {self.detection_time}")
+                    query_url_post_image(
+                            url=f"http://{self.ksvc_name}.{self.namespace}/detect/time/{self.detection_time}",
+                            image_path="config/img/4k.jpg",
+                            )
+                    done_detecting.set()
 
-                    with open(result_file, mode="a", newline="") as f:
-                        result_value = [
-                            cpu[0],
-                            cpu[1],
-                            mem[1],
-                            networkIn[1],
-                            networkOut[1],
-                        ]
-                        writer = csv.writer(f)
-                        writer.writerow(result_value)
-                    logging.debug(
-                        f"Successfully write {result_value} into {result_file}"
-                    )
-                    logging.info("Collecting prometheus metrics successfully!")
-                    time.sleep(0.5)
+                def query_prometheus():
+                    while not done_detecting.is_set():
+                        logging.info("Collecting prometheus metrics ...")
 
+                        cpu = Prometheus.queryPodCPU(
+                            namespace=self.namespace,
+                            prom_server=self.cluster_info.prometheus_ip,
+                            nodename=self.hostname
+                        )
+                        mem = Prometheus.queryPodMemory(
+                            namespace=self.namespace,
+                            prom_server=self.cluster_info.prometheus_ip,
+                            nodename=self.hostname
+                        )
+                        networkIn = Prometheus.queryPodNetworkIn(
+                            namespace=self.namespace,
+                            prom_server=self.cluster_info.prometheus_ip,
+                            nodename=self.hostname
+                        )
+                        networkOut = Prometheus.queryPodNetworkOut(
+                            namespace=self.namespace,
+                            prom_server=self.cluster_info.prometheus_ip,
+                            nodename=self.hostname
+                        )
+
+                        with open(result_file, mode="a", newline="") as f:
+                            result_value = [
+                                cpu[0],
+                                cpu[1],
+                                mem[1],
+                                networkIn[1],
+                                networkOut[1],
+                            ]
+                            writer = csv.writer(f)
+                            writer.writerow(result_value)
+                        logging.debug(
+                            f"Successfully write {result_value} into {result_file}"
+                        )
+                        logging.info("Collecting prometheus metrics successfully!")
+                        time.sleep(0.5)
+                        
+                thread1 = threading.Thread(target=yolo_detection)
+                thread2 = threading.Thread(target=query_prometheus)
+
+                thread1.start()
+                thread2.start()
+
+                thread1.join()
+                thread2.join()
+                
                 # 5. Plot result
                 PlotResult.plot_hardware(
                     result_file=result_file,
-                    output_file=f"result/1_2_resource_web/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
+                    output_file=f"result/3_3_yolo_resource/{self.hostname}/{self.arch}_{var.generate_file_time}_rep{rep}.png",
                 )
 
                 logging.info(
@@ -552,3 +583,92 @@ class PlotResult:
             logging.error(f"Error saving plot: {e}")
         finally:
             plt.close()  # Ensure the plot is closed to free memory
+
+    @staticmethod
+    def plot_hardware(result_file, output_file):
+        logging.info("Start plot hardware usage of web service")
+        cpu_data = []
+        mem_data = []
+        network_in_data = []
+        network_out_data = []
+
+        try:
+            # NOTE: For demonstration, we'll skip reading a file and use dummy data.
+            # In a real environment, the file reading block below would execute.
+            with open(result_file, "r", newline="") as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header row
+                for row in reader:
+                    if row:
+                        try:
+                            cpu_data.append(float(row[1]))
+                            mem_data.append(float(row[2]))
+                            network_in_data.append(float(row[3]))
+                            network_out_data.append(float(row[4]))
+                        except (ValueError, IndexError) as e:
+                            logging.warning(f"Skipping invalid row: {row}. Error: {e}")
+        except Exception as e:
+            logging.error(f"Error reading file: {e}")
+            return
+
+        if not all([cpu_data, mem_data, network_in_data, network_out_data]):
+            logging.error("Data series empty.")
+            return
+
+        # --- 1. DEFINE THE FORMATTER ---
+        def human_readable_format(x, pos):
+            """
+            Converts raw numbers to K, M, G, T units.
+            x: value, pos: tick position (required by matplotlib)
+            """
+            if x >= 1e12:
+                return f"{x * 1e-12:.1f}T"
+            elif x >= 1e9:
+                return f"{x * 1e-9:.1f}G"
+            elif x >= 1e6:
+                return f"{x * 1e-6:.1f}M"
+            elif x >= 1e3:
+                return f"{x * 1e-3:.1f}K"
+            return f"{x:.0f}"
+
+        # Create the formatter object for Memory and Network (Bytes/Bps)
+        byte_formatter = FuncFormatter(human_readable_format)
+
+        # --- PLOTTING ---
+        fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
+        fig.suptitle("Yolo Service Resource Usage", fontsize=18, fontweight="bold")
+
+        # --- Plot 1: CPU Usage (Convert Core to mCPU) ---
+        # Multiply all CPU data points by 1000
+        cpu_mcpu_data = [c * 1000 for c in cpu_data] 
+        
+        axes[0, 0].boxplot(cpu_mcpu_data)
+        axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
+        axes[0, 0].set_ylabel("Usage (mCPU)", fontsize=12) # <-- Updated label
+        axes[0, 0].set_xticklabels(["CPU"])
+        # Axes will automatically scale to the multiplied values (mCPU)
+        
+        # --- Plot 2: Memory Usage (Apply Byte Formatter) ---
+        axes[0, 1].boxplot(mem_data)
+        axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
+        axes[0, 1].set_ylabel("Usage (Bytes)", fontsize=12)
+        axes[0, 1].set_xticklabels(["Memory"])
+        axes[0, 1].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
+        
+        # --- Plot 3: Network In (Apply Byte Formatter) ---
+        axes[1, 0].boxplot(network_in_data)
+        axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
+        axes[1, 0].set_ylabel("Traffic (Bps)", fontsize=12)
+        axes[1, 0].set_xticklabels(["Network In"])
+        axes[1, 0].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
+        
+        # --- Plot 4: Network Out (Apply Byte Formatter) ---
+        axes[1, 1].boxplot(network_out_data)
+        axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
+        axes[1, 1].set_ylabel("Traffic (Bps)", fontsize=12)
+        axes[1, 1].set_xticklabels(["Network Out"])
+        axes[1, 1].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.savefig(output_file)
+        logging.info(f"Plot successfully saved to {output_file}")

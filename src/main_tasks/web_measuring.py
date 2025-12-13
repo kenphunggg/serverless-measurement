@@ -600,7 +600,7 @@ class PlotResult:
 
         # --- PLOTTING ---
         fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
-        fig.suptitle("Streaming Service Resource Usage", fontsize=18, fontweight="bold")
+        fig.suptitle("Web Service Resource Usage", fontsize=18, fontweight="bold")
 
         # --- Plot 1: CPU Usage (Convert Core to mCPU) ---
         # Multiply all CPU data points by 1000

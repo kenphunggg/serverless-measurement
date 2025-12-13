@@ -37,6 +37,9 @@ result/3_1_yolo_warm/*
 result/3_2_yolo_cold/*
 !result/3_2_yolo_cold/.gitkeep
 
+result/3_3_yolo_resource/*
+!result/3_3_yolo_resource/.gitkeep
+
 # Ignore python repos
 __pycache__/
 

@@ -5,11 +5,13 @@ from src import variables as var
 from src.main_tasks.streaming import StreamingMeasuring
 from src.main_tasks.web_measuring import WebMeasuring
 from src.main_tasks.yolo import YoloMeasuring
+from src.main_tasks.llm import LLMMeasuring
 
 # ---------- Preset Test Config ----------
 TEST_WEB_CONFIG_PATH = "config/config_web.json"
 TEST_STREAMING_CONFIG_PATH = "config/config_streaming.json"
 TEST_YOLO_CONFIG_PATH = "config/config_yolo.json"
+TEST_LLM_CONFIG_PATH = "config/config_llm.json"
 
 # ---------- Preset Germany Config ----------
 GERM_WEB_CONFIG_CLOUD_PATH = "config/germ/config_web_cloud.json"
@@ -22,9 +24,8 @@ GERM_YOLO_CONFIG_CLOUD_PATH = "config/germ/config_yolo_cloud.json"
 GERM_YOLO_CONFIG_EDGE_PATH = "config/germ/config_yolo_edge.json"
 
 
-
 # ---------- CONFIG FILE ----------
-CONFIG_FILE = TEST_YOLO_CONFIG_PATH
+CONFIG_FILE = TEST_LLM_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -72,6 +73,12 @@ if __name__ == "__main__":
             # yolo_measuring.get_yolo_detection_cold()
             yolo_measuring.get_warm_hardware_usage()
             del yolo_measuring
+
+        elif test_case["test_case"] == "llm":
+            llm_measuring = LLMMeasuring(config=test_case, cluster_info=my_cluster)
+            # llm_measuring.get_text2text_warm()
+            llm_measuring.get_text2image_warm()
+            del llm_measuring
 
     end_time = datetime.datetime.now()
 

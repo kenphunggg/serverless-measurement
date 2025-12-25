@@ -327,6 +327,104 @@ class K8sAPI:
                 logging.error(f"API Error for '{ksvc_name}': {e}")
 
     @staticmethod
+    def deploy_ksvc_llm(
+        ksvc_name: str,
+        namespace: str,
+        image: str,
+        port: int,
+        hostname: str,
+        window_time: int,
+        min_scale: int,
+        max_scale: int,
+        timeout_seconds: int = 600,
+        cpu: int = 0,
+        memory: int = 0,
+    ):
+        """Deploy ksvc(knative service) using given parameters
+
+        Args:
+            ksvc_name (str): name of ksvc
+            namespace (str): namespace of your ksvc
+            image (str): your image to deploy ksvc
+            port (int): port your application run on
+            hostname (str): name of the host that application will run on
+            replicas (int): total number of replicas that you want for your app
+        """
+        yaml_description = {
+            "apiVersion": "serving.knative.dev/v1",
+            "kind": "Service",
+            "metadata": {
+                "name": ksvc_name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "template": {
+                    "metadata": {
+                        "annotations": {
+                            "autoscaling.knative.dev/window": f"{window_time}s",
+                            "autoscaling.knative.dev/min-scale": f"{min_scale}",
+                            "autoscaling.knative.dev/max-scale": f"{max_scale}",
+                        }
+                    },
+                    "spec": {
+                        # --- ADDED TIMEOUT FIELD ---
+                        "timeoutSeconds": timeout_seconds,
+                        "containers": [
+                            {
+                                "image": image,
+                                "ports": [{"containerPort": port}],
+                            }
+                        ],
+                        "nodeSelector": {"kubernetes.io/hostname": hostname},
+                    },
+                }
+            },
+        }
+
+        if cpu != 0 and memory != 0:
+            resource_settings = {
+                "limits": {
+                    "cpu": cpu,
+                    "memory": memory,
+                },
+            }
+
+            yaml_description["spec"]["template"]["spec"]["containers"][0][
+                "resources"
+            ] = resource_settings
+
+        # Load Kubernetes config and define API parameters
+
+        config.load_kube_config()
+        api = client.CustomObjectsApi()
+        group = "serving.knative.dev"
+        version = "v1"
+        plural = "services"
+
+        # --- Apply the configuration to the cluster ---
+        try:
+            # Check if the object already exists
+            api.get_namespaced_custom_object(
+                group, version, namespace, plural, ksvc_name
+            )
+            # If it exists, patch it
+            logging.info(f"Knative Service '{ksvc_name}' already exists. Patching...")
+            api.patch_namespaced_custom_object(
+                group, version, namespace, plural, ksvc_name, yaml_description
+            )
+            logging.info(f"Knative Service '{ksvc_name}' patched successfully.")
+        except ApiException as e:
+            if e.status == 404:
+                # If it doesn't exist, create it
+                logging.info(f"Knative Service '{ksvc_name}' not found. Creating...")
+                api.create_namespaced_custom_object(
+                    group, version, namespace, plural, yaml_description
+                )
+                logging.info(f"Knative Service '{ksvc_name}' created successfully.")
+            else:
+                logging.error(f"API Error for '{ksvc_name}': {e}")
+
+    @staticmethod
     def k8s_streaming_yaml(
         svc_name: str,
         namespace: str,
@@ -367,7 +465,7 @@ class K8sAPI:
                                     {
                                         "name": "SCALE_VALUE",
                                         # Assuming streaming_info has a .resolution attribute
-                                        "value": streaming_info.streaming_resolution, 
+                                        "value": streaming_info.streaming_resolution,
                                     },
                                 ],
                                 "ports": [
@@ -403,13 +501,15 @@ class K8sAPI:
             resource_settings = {
                 "limits": {
                     "cpu": f"{cpu}",  # Usually passed as millicores in int, formatted to string
-                    "memory": f"{memory}", # Usually passed as Mi in int
+                    "memory": f"{memory}",  # Usually passed as Mi in int
                 },
             }
             # In case you pass raw strings, remove the f-string formatting above
             # strictly following your previous logic:
-            if isinstance(cpu, int): resource_settings["limits"]["cpu"] = cpu
-            if isinstance(memory, int): resource_settings["limits"]["memory"] = memory
+            if isinstance(cpu, int):
+                resource_settings["limits"]["cpu"] = str(cpu)
+            if isinstance(memory, int):
+                resource_settings["limits"]["memory"] = str(memory)
 
             deployment_config["spec"]["template"]["spec"]["containers"][0][
                 "resources"
@@ -431,7 +531,7 @@ class K8sAPI:
                         "targetPort": "api",
                     },
                     {
-                        "name": "rtmp", # Updated from 'hls' to 'rtmp' to match Deployment
+                        "name": "rtmp",  # Updated from 'hls' to 'rtmp' to match Deployment
                         "protocol": "TCP",
                         "port": stream_port,
                         "targetPort": "rtmp",
@@ -518,7 +618,12 @@ class K8sAPI:
                     logging.info("Deployment '%s' created.", api_response.metadata.name)
                 except ApiException:
                     # Replaced print with logger.exception
-                    logging.error("Error creating deployment '%s'. Status: %s, Reason: %s", svc_name, e.status, e.body)
+                    logging.error(
+                        "Error creating deployment '%s'. Status: %s, Reason: %s",
+                        svc_name,
+                        e.status,
+                        e.body,
+                    )
             else:
                 # Other API error
                 # Replaced print with logger.exception
@@ -550,7 +655,12 @@ class K8sAPI:
                     logging.info("Service '%s' created.", api_response.metadata.name)
                 except ApiException:
                     # Replaced print with logger.exception
-                    logging.error("Error creating service '%s'. Status: %s, Reason: %s", svc_name, e.status, e.body)
+                    logging.error(
+                        "Error creating service '%s'. Status: %s, Reason: %s",
+                        svc_name,
+                        e.status,
+                        e.body,
+                    )
             else:
                 # Other API error
                 # Replaced print with logger.exception
@@ -1051,13 +1161,13 @@ class K8sAPI:
 
     @staticmethod
     def get_ksvc_pod_ip(
-        ksvc_name: str, 
-        namespace: str, 
-        timeout_seconds: int = 300, 
-        retry_interval_seconds: int = 0
+        ksvc_name: str,
+        namespace: str,
+        timeout_seconds: int = 300,
+        retry_interval_seconds: int = 0,
     ) -> str | None:
         """
-        Continuously checks for and retrieves the IP address of a running Pod 
+        Continuously checks for and retrieves the IP address of a running Pod
         associated with a given Knative Service (Ksvc) until a timeout is reached.
 
         Args:
@@ -1069,7 +1179,7 @@ class K8sAPI:
         Returns:
             The IP address (str) of a running pod, or None if the timeout expires.
         """
-        
+
         # 1. Load Kubernetes Configuration
         try:
             config.load_kube_config()
@@ -1083,63 +1193,72 @@ class K8sAPI:
 
         v1_custom = client.CustomObjectsApi()
         v1_core = client.CoreV1Api()
-        
+
         # --- Step 1: Get the Ksvc UID and Setup Selector ---
         try:
-            # Get the Ksvc to ensure it exists and to get its UID if needed, 
+            # Get the Ksvc to ensure it exists and to get its UID if needed,
             # though the service name label is usually sufficient.
             v1_custom.get_namespaced_custom_object(
                 group="serving.knative.dev",
                 version="v1",
-                plural="services", 
+                plural="services",
                 name=ksvc_name,
                 namespace=namespace,
             )
         except ApiException as e:
             if e.status == 404:
-                logging.error(f"Ksvc '{ksvc_name}' not found in namespace '{namespace}'.")
+                logging.error(
+                    f"Ksvc '{ksvc_name}' not found in namespace '{namespace}'."
+                )
             else:
                 logging.error(f"Error retrieving Ksvc: {e}")
             return None
-        
+
         # The standard Knative label selector for Pods belonging to this service
         label_selector = f"serving.knative.dev/service={ksvc_name}"
-        
+
         logging.info(f"Starting watch for Pod IP (Timeout: {timeout_seconds}s)...")
-        
+
         start_time = time.time()
-        
+
         # --- Step 2: Retry Loop to Check Pod Status ---
         while time.time() - start_time < timeout_seconds:
             try:
                 # List Pods matching the selector
                 pods = v1_core.list_namespaced_pod(
-                    namespace=namespace,
-                    label_selector=label_selector
+                    namespace=namespace, label_selector=label_selector
                 )
-                
+
                 for pod in pods.items:
                     # Check for the desired state: Running and has an IP address
                     if pod.status.phase == "Running" and pod.status.pod_ip:
                         pod_ip = pod.status.pod_ip
-                        logging.info(f"Pod '{pod.metadata.name}' is RUNNING. IP found: {pod_ip}")
+                        logging.info(
+                            f"Pod '{pod.metadata.name}' is RUNNING. IP found: {pod_ip}"
+                        )
                         return pod_ip
-                    
+
                     # Report if we found a Pod, but it's still initializing
                     if pod.status.phase in ["Pending", "ContainerCreating"]:
-                        logging.warning(f"Pod '{pod.metadata.name}' found but is in phase: {pod.status.phase}. Waiting...")
-                
+                        logging.warning(
+                            f"Pod '{pod.metadata.name}' found but is in phase: {pod.status.phase}. Waiting..."
+                        )
+
                 # If no Pods were found, or all were non-running/non-ready
                 if not pods.items:
-                    logging.warning("No Pods currently found for the service. Waiting for Knative to scale up...")
-                
+                    logging.warning(
+                        "No Pods currently found for the service. Waiting for Knative to scale up..."
+                    )
+
             except ApiException as e:
                 logging.error(f"Kubernetes API error while listing pods: {e}")
-                return None # Exit on hard API error
+                return None  # Exit on hard API error
 
             # Wait for the next check
             time.sleep(retry_interval_seconds)
 
         # --- Step 3: Timeout ---
-        logging.error(f"Timeout reached ({timeout_seconds}s). Could not retrieve a running Pod IP for Ksvc '{ksvc_name}'.")
+        logging.error(
+            f"Timeout reached ({timeout_seconds}s). Could not retrieve a running Pod IP for Ksvc '{ksvc_name}'."
+        )
         return None

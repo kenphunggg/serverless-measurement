@@ -18,7 +18,7 @@ from src.lib import (
     get_time_to_first_frame,
     get_time_to_first_frame_warm,
     query_url,
-    KnativePinger
+    KnativePinger,
 )
 from src.prometheus import Prometheus
 
@@ -151,14 +151,17 @@ class StreamingMeasuring:
                             url=f"http://{self.ksvc_name}.{self.namespace}:{self.flask_port}/stream/start"
                         )
                         if start_stream is None:
-                            logging.warning("Error when starting stream, start deleting svc and try again")
+                            logging.warning(
+                                "Error when starting stream, start deleting svc and try again"
+                            )
                             K8sAPI.delete_deployment_svc(
                                 svc_name=self.ksvc_name, namespace=self.namespace
                             )
 
                             while True:
                                 pods = K8sAPI.get_pod_status_by_deployment(
-                                    namespace=self.namespace, deployment_name=self.ksvc_name
+                                    namespace=self.namespace,
+                                    deployment_name=self.ksvc_name,
                                 )
                                 logging.info(
                                     f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
@@ -187,7 +190,8 @@ class StreamingMeasuring:
                             while True:
                                 if K8sAPI.all_pods_ready(
                                     pods=K8sAPI.get_pod_status_by_deployment(
-                                        namespace=self.namespace, deployment_name=self.ksvc_name
+                                        namespace=self.namespace,
+                                        deployment_name=self.ksvc_name,
                                     )
                                 ):
                                     logging.info("All pods ready!")
@@ -195,9 +199,8 @@ class StreamingMeasuring:
                                 logging.info("Waiting for pods to be ready ...")
                                 time.sleep(2)
                             time.sleep(self.cool_down_time)
-                            i-=1
+                            i -= 1
                             continue
-                            
 
                         response = get_time_to_first_frame_warm(
                             url=f"rtmp://{self.ksvc_name}.{self.namespace}:{self.port}/{self.cluster_info.streaming_info.streaming_uri}"
@@ -301,22 +304,30 @@ class StreamingMeasuring:
                         logging.info("Waiting for pods to be ready ...")
                         time.sleep(2)
 
-                    pod_ip = K8sAPI.get_ksvc_pod_ip(ksvc_name=self.ksvc_name, namespace=self.namespace)
+                    pod_ip = K8sAPI.get_ksvc_pod_ip(
+                        ksvc_name=self.ksvc_name, namespace=self.namespace
+                    )
 
                     # 4. Execute ffmpeg command to receive video from source and get fps
                     logging.info("Start catching fps/bitrate of streaming service")
                     # 4.1. Unpack the two lists returned by the updated function
                     fps_list, bitrate_list = get_fps_bitrate(
                         stream_url=f"rtmp://{pod_ip}:1935/live/stream",
-                        sample_needed=self.curl_time*10,
+                        sample_needed=self.curl_time * 10,
                     )
 
                     # 4.2. Log summary statistics (optional, but good for debugging)
                     if fps_list:
                         avg_fps = sum(fps_list) / len(fps_list)
-                        avg_bitrate = sum(bitrate_list) / len(bitrate_list) if bitrate_list else 0.0
+                        avg_bitrate = (
+                            sum(bitrate_list) / len(bitrate_list)
+                            if bitrate_list
+                            else 0.0
+                        )
                         logging.info(f"Captured {len(fps_list)} samples.")
-                        logging.info(f"Stats -> Avg FPS: {avg_fps:.2f} | Avg Bitrate: {avg_bitrate:.0f} kbits/s")
+                        logging.info(
+                            f"Stats -> Avg FPS: {avg_fps:.2f} | Avg Bitrate: {avg_bitrate:.0f} kbits/s"
+                        )
                     else:
                         logging.warning("No samples were captured from the stream.")
 
@@ -325,7 +336,7 @@ class StreamingMeasuring:
                     if fps_list:
                         with open(stream_stats_file, "a", newline="") as f:
                             writer = csv.writer(f)
-                            
+
                             # 'zip' pairs the two lists together so you can write them in the same row
                             for fps, bitrate in zip(fps_list, bitrate_list):
                                 writer.writerow([fps, bitrate])
@@ -423,7 +434,7 @@ class StreamingMeasuring:
                         "detection_time": self.detection_time,
                         "cluster_info": self.cluster_info,
                         "result_file": stream_resource_file,
-                        "nodename": self.hostname
+                        "nodename": self.hostname,
                     },
                 )
 
@@ -511,7 +522,9 @@ class StreamingMeasuring:
 
                     # 4. Execute ffmpeg command to receive video from source and get time to first frame
                     for i in range(self.curl_time):
-                        logging.info(f"Start catching streaming service [{i+1}/{self.curl_time}]")
+                        logging.info(
+                            f"Start catching streaming service [{i+1}/{self.curl_time}]"
+                        )
 
                         # 5. Waiting for all pods to scale to zero
                         while True:
@@ -554,10 +567,14 @@ class StreamingMeasuring:
 
                         time.sleep(2)
 
-                        pinger = KnativePinger(url=f"http://{self.ksvc_name}.{self.namespace}.svc.cluster.local")
+                        pinger = KnativePinger(
+                            url=f"http://{self.ksvc_name}.{self.namespace}.svc.cluster.local"
+                        )
                         pinger.start()
                         starttime = time.time()
-                        pod_ip = K8sAPI.get_ksvc_pod_ip(ksvc_name=self.ksvc_name, namespace=self.namespace)
+                        pod_ip = K8sAPI.get_ksvc_pod_ip(
+                            ksvc_name=self.ksvc_name, namespace=self.namespace
+                        )
 
                         time_to_first_frame = get_time_to_first_frame(
                             url=f"rtmp://{pod_ip}:1935/live/stream"
@@ -566,7 +583,7 @@ class StreamingMeasuring:
                         if time_to_first_frame:
                             with open(result_file, mode="a", newline="") as f:
                                 writer = csv.writer(f)
-                                writer.writerow([time.time()-starttime])
+                                writer.writerow([time.time() - starttime])
                                 logging.debug(
                                     f"Successfully write {time_to_first_frame} into {result_file}"
                                 )
@@ -612,7 +629,9 @@ class StreamingMeasuring:
 
 class GetHardWareUsage:
     @staticmethod
-    def query_prometheus(namespace, detection_time, cluster_info, result_file, nodename):
+    def query_prometheus(
+        namespace, detection_time, cluster_info, result_file, nodename
+    ):
         logging.info(
             "Start query prometheus to get hardware information when running streaming service"
         )
@@ -622,17 +641,24 @@ class GetHardWareUsage:
         while time.time() - start_time < detection_time:
             logging.info("Collecting prometheus metrics ...")
             cpu = Prometheus.queryPodCPU(
-                namespace=namespace, prom_server=cluster_info.prometheus_ip, nodename=nodename
+                namespace=namespace,
+                prom_server=cluster_info.prometheus_ip,
+                nodename=nodename,
             )
             mem = Prometheus.queryPodMemory(
-                namespace=namespace, prom_server=cluster_info.prometheus_ip, nodename=nodename
+                namespace=namespace,
+                prom_server=cluster_info.prometheus_ip,
+                nodename=nodename,
             )
             networkIn = Prometheus.queryPodNetworkIn(
-                namespace=namespace, prom_server=cluster_info.prometheus_ip, nodename=nodename
+                namespace=namespace,
+                prom_server=cluster_info.prometheus_ip,
+                nodename=nodename,
             )
             networkOut = Prometheus.queryPodNetworkOut(
                 namespace=namespace,
-                prom_server=cluster_info.prometheus_ip, nodename=nodename
+                prom_server=cluster_info.prometheus_ip,
+                nodename=nodename,
             )
             with open(result_file, mode="a", newline="") as f:
                 result_value = [
@@ -1027,7 +1053,7 @@ class PlotResult:
     @staticmethod
     def bitrate_fps(result_file: str, output_file: str):
         """
-        Reads FPS and Bitrate data from a CSV file and generates side-by-side 
+        Reads FPS and Bitrate data from a CSV file and generates side-by-side
         Box Plots to visualize the distribution of both metrics.
 
         Args:
@@ -1035,27 +1061,31 @@ class PlotResult:
             output_file: The path to save the generated plot image.
         """
         logging.info("Start plotting FPS and Bitrate distribution (Box Plots)")
-        
+
         try:
             # Use pandas to read the CSV
-            df = pd.read_csv(result_file, header=None, names=['FPS', 'Bitrate'])
-            
+            df = pd.read_csv(result_file, header=None, names=["FPS", "Bitrate"])
+
             if df.empty:
-                logging.error(f"Error: The CSV file '{result_file}' is empty or contains no data rows.")
+                logging.error(
+                    f"Error: The CSV file '{result_file}' is empty or contains no data rows."
+                )
                 return
 
             # Ensure data is numerical and clean up
-            df['FPS'] = pd.to_numeric(df['FPS'], errors='coerce')
-            df['Bitrate'] = pd.to_numeric(df['Bitrate'], errors='coerce')
+            df["FPS"] = pd.to_numeric(df["FPS"], errors="coerce")
+            df["Bitrate"] = pd.to_numeric(df["Bitrate"], errors="coerce")
             df.dropna(inplace=True)
 
             if df.empty:
-                logging.error("Error: All data rows were invalid or non-numeric after cleaning.")
+                logging.error(
+                    "Error: All data rows were invalid or non-numeric after cleaning."
+                )
                 return
 
-            fps_data = df['FPS'].values
-            bitrate_data = df['Bitrate'].values
-            
+            fps_data = df["FPS"].values
+            bitrate_data = df["Bitrate"].values
+
         except FileNotFoundError:
             logging.error(f"Error: The file '{result_file}' was not found.")
             return
@@ -1064,38 +1094,53 @@ class PlotResult:
             return
 
         # --- Plotting ---
-        
+
         # Create figure and two subplots (1 row, 2 columns) for side-by-side comparison
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
         fig.suptitle("Distribution of FPS and Bitrate Metrics", fontsize=16)
 
         # --- Plot 1: FPS Box Plot ---
-        axes[0].boxplot([fps_data], patch_artist=True, boxprops=dict(facecolor='tab:blue'))
+        axes[0].boxplot(
+            [fps_data], patch_artist=True, boxprops=dict(facecolor="tab:blue")
+        )
         axes[0].set_title("FPS Distribution")
         axes[0].set_ylabel("Frames Per Second")
         axes[0].set_xticklabels(["FPS"])
-        axes[0].grid(axis='y', linestyle='--', alpha=0.7)
-        
+        axes[0].grid(axis="y", linestyle="--", alpha=0.7)
+
         # Add mean FPS line
         mean_fps = np.mean(fps_data)
-        axes[0].axhline(mean_fps, color='black', linestyle=':', linewidth=1.5, label=f'Mean: {mean_fps:.2f}')
-        axes[0].legend(loc='lower left')
+        axes[0].axhline(
+            mean_fps,
+            color="black",
+            linestyle=":",
+            linewidth=1.5,
+            label=f"Mean: {mean_fps:.2f}",
+        )
+        axes[0].legend(loc="lower left")
 
         # --- Plot 2: Bitrate Box Plot ---
-        axes[1].boxplot([bitrate_data], patch_artist=True, boxprops=dict(facecolor='tab:red'))
+        axes[1].boxplot(
+            [bitrate_data], patch_artist=True, boxprops=dict(facecolor="tab:red")
+        )
         axes[1].set_title("Bitrate Distribution")
         axes[1].set_ylabel("Bitrate (kbits/s)")
         axes[1].set_xticklabels(["Bitrate"])
-        axes[1].grid(axis='y', linestyle='--', alpha=0.7)
+        axes[1].grid(axis="y", linestyle="--", alpha=0.7)
 
         # Add mean Bitrate line
         mean_bitrate = np.mean(bitrate_data)
-        axes[1].axhline(mean_bitrate, color='black', linestyle=':', linewidth=1.5, label=f'Mean: {mean_bitrate:.2f}')
-        axes[1].legend(loc='lower left')
-
+        axes[1].axhline(
+            mean_bitrate,
+            color="black",
+            linestyle=":",
+            linewidth=1.5,
+            label=f"Mean: {mean_bitrate:.2f}",
+        )
+        axes[1].legend(loc="lower left")
 
         # Adjust layout to prevent titles and labels from overlapping
-        plt.tight_layout(rect=[0, 0, 1, 0.96]) 
+        plt.tight_layout(rect=[0, 0, 1, 0.96])
 
         # Save the figure to a file
         plt.savefig(output_file)

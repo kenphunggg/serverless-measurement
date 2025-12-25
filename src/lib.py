@@ -48,10 +48,10 @@ class ClusterInfo:
     def __init__(
         self,
         master_node: Node,
-        worker_nodes: List[Node] = None,
-        database_info: DatabaseInfo = None,
-        streaming_info: StreamingInfo = None,
-        prom_server: PrometheusServer = None,
+        worker_nodes: List[Node],
+        database_info: DatabaseInfo,
+        streaming_info: StreamingInfo,
+        prom_server: PrometheusServer,
     ):
         self.master_node = master_node
         self.worker_nodes = worker_nodes if worker_nodes is not None else []
@@ -132,6 +132,7 @@ class CreateResultFile:
             header="timestamp,cpu_usage(vCPU),mem_usage(Bytes),network_in(Bps),network_out(Bps)\n",
         )
 
+    @staticmethod
     def web_curl_cold(nodename: str, filename: str):
         return CreateResultFile.create(
             test_case="1_3_curl_cold",
@@ -210,6 +211,24 @@ class CreateResultFile:
             nodename=nodename,
             filename=filename,
             header="timestamp,cpu_usage(mCPU),mem_usage(MB),network_in(MBps), network_out(MBps)\n",
+        )
+
+    @staticmethod
+    def text2text_warm(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="4_1_text2text",
+            nodename=nodename,
+            filename=filename,
+            header="input_tokens,output_tokens,total_tokens,tokens_per_second, processing_time_second, response_time_ms\n",
+        )
+
+    @staticmethod
+    def text2image_warm(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="4_2_text2image",
+            nodename=nodename,
+            filename=filename,
+            header="image_size_bytes,processing_time_second,response_time_ms\n",
         )
 
 
@@ -430,19 +449,21 @@ def query_url_post_image(url: str, image_path: str) -> dict | None:
 
 class KnativePinger:
     """
-    Manages a background thread that continuously pings a Knative service 
+    Manages a background thread that continuously pings a Knative service
     to prevent it from scaling to zero.
     """
+
     def __init__(self, url: str, ping_interval: int = 5):
         self.url = url
         # Ping interval in seconds (default: 5s)
-        self.ping_interval = ping_interval 
+        self.ping_interval = ping_interval
         # Event used to signal the background thread to stop
         self._stop_event = threading.Event()
         # The actual thread object
         self._thread = threading.Thread(target=self._run_pinger, daemon=True)
-        logging.info(f"Knative Pinger initialized for URL: {self.url} with interval: {self.ping_interval}s")
-
+        logging.info(
+            f"Knative Pinger initialized for URL: {self.url} with interval: {self.ping_interval}s"
+        )
 
     def _run_pinger(self):
         """The main loop executed by the background thread."""
@@ -450,12 +471,16 @@ class KnativePinger:
             try:
                 # Send a non-blocking GET request
                 response = requests.get(self.url, timeout=15)
-                
+
                 if response.status_code == 200:
-                    logging.info(f"Keep-Alive successful. Status: {response.status_code}")
+                    logging.info(
+                        f"Keep-Alive successful. Status: {response.status_code}"
+                    )
                 else:
-                    logging.warning(f"Keep-Alive received non-200 status: {response.status_code}")
-                    
+                    logging.warning(
+                        f"Keep-Alive received non-200 status: {response.status_code}"
+                    )
+
             except requests.exceptions.RequestException as e:
                 # Log an error if the request fails completely (connection refused, DNS error, etc.)
                 logging.error(f"Keep-Alive request failed: {e}")
@@ -463,7 +488,6 @@ class KnativePinger:
             # Wait for the interval OR until the stop event is set.
             # wait() returns True if the event is set, False if the timeout occurs.
             self._stop_event.wait(self.ping_interval)
-
 
     def start(self):
         """Starts the background pinging thread."""
@@ -473,12 +497,11 @@ class KnativePinger:
         else:
             logging.warning("Pinger thread is already running.")
 
-
     def stop(self):
         """Signals the background thread to stop and waits for it to join."""
         logging.info("Stopping Knative Pinger thread...")
-        self._stop_event.set() # Set the event to break the while loop in _run_pinger
-        
+        self._stop_event.set()  # Set the event to break the while loop in _run_pinger
+
         # Wait for the thread to finish its current loop and terminate
         if self._thread.is_alive():
             self._thread.join()
@@ -520,10 +543,15 @@ def get_time_to_first_frame_warm(
 
         command = [
             "ffmpeg",
-            "-i", url,
-            "-vframes", "1",       # Exit after processing the first video frame
-            "-f", "null", "-",     # Discard output
-            "-rw_timeout", str(int(wait_timeout * 1_000_000))
+            "-i",
+            url,
+            "-vframes",
+            "1",  # Exit after processing the first video frame
+            "-f",
+            "null",
+            "-",  # Discard output
+            "-rw_timeout",
+            str(int(wait_timeout * 1_000_000)),
         ]
 
         try:
@@ -533,21 +561,21 @@ def get_time_to_first_frame_warm(
                 capture_output=True,
                 text=True,
                 check=True,
-                timeout=current_attempt_timeout
+                timeout=current_attempt_timeout,
             )
-            
+
             # If we reach here, ffmpeg succeeded (exit code 0)
             logging.info(f"RTMP Stream found and decoded after {elapsed_total:.2f}s.")
             return True
 
         except subprocess.CalledProcessError as e:
             logging.warning(f"ffmpeg failed (Exit code {e.returncode}). Retrying...")
-            
+
             # Log the specific error message from FFmpeg (if available)
             if e.stderr:
                 # .strip() removes extra newlines at the end
                 logging.warning(f"FFmpeg Error Log: {e.stderr.strip()}")
-            
+
             time.sleep(0.5)
             continue
 
@@ -567,28 +595,33 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
     including the time spent waiting for the stream to become available.
     """
     start_time = time.monotonic()
-    
+
     # --- Part 1 & 2 Combined: Time the polling ffmpeg process ---
     command = [
         # Ensure you use the absolute path if 'ffmpeg' is not in PATH
         "ffmpeg",
-        "-i", url,
-        "-vframes", "1",
-        "-f", "null", "-",
+        "-i",
+        url,
+        "-vframes",
+        "1",
+        "-f",
+        "null",
+        "-",
         # Use ffmpeg's internal timeout to limit connection attempts, set it to the total remaining time
-        "-rw_timeout", str(int(wait_timeout * 1_000_000)) 
+        "-rw_timeout",
+        str(int(wait_timeout * 1_000_000)),
     ]
 
     try:
         logging.info(f"Attempting to connect and decode the first frame from {url}...")
-        
+
         subprocess.run(
             command,
             capture_output=True,
             text=True,
             check=True,
             # Set the Python timeout to the maximum allowed wait_timeout
-            timeout=wait_timeout
+            timeout=wait_timeout,
         )
 
         end_time = time.monotonic()
@@ -601,7 +634,9 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
 
     except subprocess.CalledProcessError as e:
         # ffmpeg failed (e.g., stream never appeared)
-        logging.error(f"ffmpeg failed after {time.monotonic() - start_time:.2f}s for URL: {url}")
+        logging.error(
+            f"ffmpeg failed after {time.monotonic() - start_time:.2f}s for URL: {url}"
+        )
         logging.error(f"FFmpeg STDERR:\n{e.stderr.strip()}")
         return None
     except subprocess.TimeoutExpired:
@@ -609,15 +644,16 @@ def get_time_to_first_frame(url: str, wait_timeout: float = 6000.0) -> float | N
         logging.error(f"ffmpeg timed out after {wait_timeout}s for URL: {url}")
         return None
     except FileNotFoundError:
-        logging.error(
-            "ffmpeg command not found. Install it or use the absolute path."
-        )
+        logging.error("ffmpeg command not found. Install it or use the absolute path.")
         return None
 
-def get_fps_bitrate(stream_url: str, sample_needed: int) -> Tuple[List[float], List[float]]:
+
+def get_fps_bitrate(
+    stream_url: str, sample_needed: int
+) -> Tuple[List[float], List[float]]:
     """
-    Runs an FFmpeg command to analyze a stream and collects FPS and bitrate 
-    samples from its log output until the required number of samples is reached 
+    Runs an FFmpeg command to analyze a stream and collects FPS and bitrate
+    samples from its log output until the required number of samples is reached
     or the stream ends/errors.
 
     Args:
@@ -625,10 +661,10 @@ def get_fps_bitrate(stream_url: str, sample_needed: int) -> Tuple[List[float], L
         sample_needed: The number of FPS/bitrate samples to collect.
 
     Returns:
-        A tuple containing two lists: 
+        A tuple containing two lists:
         ([fps_samples], [bitrate_samples]). Returns empty lists on failure.
     """
-    
+
     # 1. Construct the FFmpeg command
     # -i: input stream URL
     # -stats_period 1: ensures stats are printed every 1 second
@@ -636,14 +672,18 @@ def get_fps_bitrate(stream_url: str, sample_needed: int) -> Tuple[List[float], L
     # -f mp4 /dev/null -y: output to /dev/null (discard) using mp4 format, overwrite output
     command = [
         "ffmpeg",
-        "-i", stream_url,
-        "-stats_period", "1",
-        "-vf", "mpdecimate",
-        "-f", "mp4",
+        "-i",
+        stream_url,
+        "-stats_period",
+        "1",
+        "-vf",
+        "mpdecimate",
+        "-f",
+        "mp4",
         "/dev/null",
-        "-y"
+        "-y",
     ]
-    
+
     # 2. Regular Expressions for parsing the output line
     # Matches a line like: frame= 601 fps= 20 ... bitrate=2520.4kbits/s ...
     # Group 1: FPS value (e.g., 20)
@@ -654,7 +694,7 @@ def get_fps_bitrate(stream_url: str, sample_needed: int) -> Tuple[List[float], L
 
     fps_samples: List[float] = []
     bitrate_samples: List[float] = []
-    
+
     # 3. Execute FFmpeg using subprocess.Popen
     try:
         process = subprocess.Popen(
@@ -662,51 +702,56 @@ def get_fps_bitrate(stream_url: str, sample_needed: int) -> Tuple[List[float], L
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,  # Decodes output as text
-            universal_newlines=True, # Crucial for reading line-by-line from FFmpeg's unbuffered output
-            bufsize=1
+            universal_newlines=True,  # Crucial for reading line-by-line from FFmpeg's unbuffered output
+            bufsize=1,
         )
     except FileNotFoundError:
-        logging.error("Error: FFmpeg executable not found. Make sure it's installed and in your PATH.")
+        logging.error(
+            "Error: FFmpeg executable not found. Make sure it's installed and in your PATH."
+        )
         return [], []
 
     logging.info(f"Collecting {sample_needed} samples from stream: {stream_url}")
-    
+
     try:
         # 4. Read the output from stderr line-by-line
         # FFmpeg's real-time progress goes to stderr
+        assert process.stderr is not None
         for line in process.stderr:
             line = line.strip()
-            
+
             # Check for the line containing the frame statistics
             if line.startswith("frame=") and "fps=" in line and "bitrate=" in line:
                 match = log_pattern.search(line)
-                
+
                 if match:
                     try:
                         # Extract and convert FPS and Bitrate to float
                         fps = float(match.group(1))
                         bitrate = float(match.group(2))
-                        
+
                         fps_samples.append(fps)
                         bitrate_samples.append(bitrate)
-                        
-                        logging.info(f"Sample {len(fps_samples)}/{sample_needed}: FPS={fps:.2f}, Bitrate={bitrate:.2f} kbits/s")
+
+                        logging.info(
+                            f"Sample {len(fps_samples)}/{sample_needed}: FPS={fps:.2f}, Bitrate={bitrate:.2f} kbits/s"
+                        )
 
                         # Stop once the desired number of samples is reached
                         if len(fps_samples) >= sample_needed:
                             print(f"Successfully collected {sample_needed} samples.")
                             break
-                            
+
                     except ValueError:
                         # Handle cases where the extracted value is not a valid float
                         continue
-            
+
         # 5. Clean up the FFmpeg process if it's still running
         if process.poll() is None:
             logging.info("Stopping FFmpeg process...")
             process.terminate()
             process.wait(timeout=5)
-            
+
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
         # Ensure process is terminated in case of error
@@ -715,6 +760,7 @@ def get_fps_bitrate(stream_url: str, sample_needed: int) -> Tuple[List[float], L
             process.wait(timeout=5)
 
     return fps_samples, bitrate_samples
+
 
 def query_url(url: str, max_retries: int = 3) -> dict | None:
     """
@@ -725,7 +771,7 @@ def query_url(url: str, max_retries: int = 3) -> dict | None:
     retry_count = 0
     while retry_count < max_retries:
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=None)
             response.raise_for_status()  # Check for 4xx/5xx errors
             data = response.json()
             logging.info(f"Successfully received response: {data}")

@@ -40,6 +40,12 @@ result/3_2_yolo_cold/*
 result/3_3_yolo_resource/*
 !result/3_3_yolo_resource/.gitkeep
 
+result/4_1_text2text/*
+!result/4_1_text2text/.gitkeep
+
+result/4_2_text2image/*
+!result/4_2_text2image/.gitkeep
+
 # Ignore python repos
 __pycache__/
 

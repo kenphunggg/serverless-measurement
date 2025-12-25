@@ -57,6 +57,7 @@ class Prometheus:
 
         return Prometheus.query(query=query_cpu_url, prom_server=prom_server)
 
+    @staticmethod
     def queryGPU(instance: str, prom_server: str):
         """
         query gpu usage
@@ -66,9 +67,10 @@ class Prometheus:
         Returns:
             list: [timestamp, value]
         """
-        query_gpu_url = ()
+        query_gpu_url = f""
         return Prometheus.query(query=query_gpu_url, prom_server=prom_server)
 
+    @staticmethod
     def queryMem(instance: str, prom_server: str):
         """
         query mem usage in (%)
@@ -87,6 +89,7 @@ class Prometheus:
 
         return Prometheus.query(query=query_mem_url, prom_server=prom_server)
 
+    @staticmethod
     def queryNetworkIn(instance: str, cluster_info: ClusterInfo, prom_server: str):
         """
         query mem usage in (%)
@@ -109,6 +112,7 @@ class Prometheus:
 
         return Prometheus.query(query=query_network_receive, prom_server=prom_server)
 
+    @staticmethod
     def queryNetworkOut(instance: str, cluster_info: ClusterInfo, prom_server: str):
         """
         query mem usage in (%)
@@ -134,7 +138,7 @@ class Prometheus:
     def queryPodCPU(namespace: str, prom_server: str, nodename: str):
         """
         Query CPU usage in (mCPU) for pods on a specific node.
-        
+
         Args:
             namespace (str): pod namespace
             prom_server (str): Prometheus server address/URL
@@ -151,7 +155,7 @@ class Prometheus:
     def queryPodMemory(namespace: str, prom_server: str, nodename: str):
         """
         Query memory usage in (Byte) for pods on a specific node.
-        
+
         Args:
             namespace (str): namespace of pod
             prom_server (str): Prometheus server address/URL
@@ -167,7 +171,7 @@ class Prometheus:
     def queryPodNetworkIn(namespace: str, prom_server: str, nodename: str):
         """
         Query *network in* in (Bps) for pods on a specific node.
-        
+
         Args:
             namespace (str): pod namespace
             prom_server (str): Prometheus server address/URL
@@ -183,7 +187,7 @@ class Prometheus:
     def queryPodNetworkOut(namespace: str, prom_server: str, nodename: str):
         """
         Query *network out* in (Bps) for pods on a specific node.
-        
+
         Args:
             namespace (str): pod namespace
             prom_server (str): Prometheus server address/URL

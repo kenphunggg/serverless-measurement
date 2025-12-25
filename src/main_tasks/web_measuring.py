@@ -8,7 +8,7 @@ from matplotlib.ticker import FuncFormatter
 from src import variables as var
 from src.k8sAPI import K8sAPI
 
-# import requests
+# import requestsA
 from src.lib import (
     ClusterInfo,
     CreateResultFile,
@@ -239,22 +239,22 @@ class WebMeasuring:
                     cpu = Prometheus.queryPodCPU(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
-                        nodename=self.hostname
+                        nodename=self.hostname,
                     )
                     mem = Prometheus.queryPodMemory(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
-                        nodename=self.hostname
+                        nodename=self.hostname,
                     )
                     networkIn = Prometheus.queryPodNetworkIn(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
-                        nodename=self.hostname
+                        nodename=self.hostname,
                     )
                     networkOut = Prometheus.queryPodNetworkOut(
                         namespace=self.namespace,
                         prom_server=self.cluster_info.prometheus_ip,
-                        nodename=self.hostname
+                        nodename=self.hostname,
                     )
 
                     with open(result_file, mode="a", newline="") as f:
@@ -360,7 +360,7 @@ class WebMeasuring:
                     for current in range(self.curl_time):
                         # Query random data and get response time
                         url = f"http://{self.ksvc_name}.{self.namespace}/processing_time/15"
-                        result = get_curl_metrics(url=url)
+                        result = get_curl_metrics(url=url) or {}
 
                         logging.debug(f"result: {result}")
                         with open(result_file, mode="a", newline="") as f:
@@ -492,7 +492,7 @@ class PlotResult:
 
         # Adjust layout and save the figure
         plt.tight_layout(
-            rect=[0, 0.03, 1, 0.95]
+            rect=(0, 0.03, 1, 0.95)
         )  # Adjust rect to make space for suptitle
         plt.savefig(output_file)
         logging.info(f"Plot successfully saved to {output_file}")
@@ -532,7 +532,7 @@ class PlotResult:
 
         # --- Create and customize the box plot ---
         fig = plt.figure(figsize=(10, 7))
-        ax = fig.add_axes([0, 0, 1, 1])
+        ax = fig.add_axes((0, 0, 1, 1))
         ax.boxplot(resp_time)
 
         plt.title("Distribution of Response Times for Web service", fontsize=16)
@@ -604,28 +604,28 @@ class PlotResult:
 
         # --- Plot 1: CPU Usage (Convert Core to mCPU) ---
         # Multiply all CPU data points by 1000
-        cpu_mcpu_data = [c * 1000 for c in cpu_data] 
-        
+        cpu_mcpu_data = [c * 1000 for c in cpu_data]
+
         axes[0, 0].boxplot(cpu_mcpu_data)
         axes[0, 0].set_title("CPU Usage Distribution", fontsize=14)
-        axes[0, 0].set_ylabel("Usage (mCPU)", fontsize=12) # <-- Updated label
+        axes[0, 0].set_ylabel("Usage (mCPU)", fontsize=12)  # <-- Updated label
         axes[0, 0].set_xticklabels(["CPU"])
         # Axes will automatically scale to the multiplied values (mCPU)
-        
+
         # --- Plot 2: Memory Usage (Apply Byte Formatter) ---
         axes[0, 1].boxplot(mem_data)
         axes[0, 1].set_title("Memory Usage Distribution", fontsize=14)
         axes[0, 1].set_ylabel("Usage (Bytes)", fontsize=12)
         axes[0, 1].set_xticklabels(["Memory"])
         axes[0, 1].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
-        
+
         # --- Plot 3: Network In (Apply Byte Formatter) ---
         axes[1, 0].boxplot(network_in_data)
         axes[1, 0].set_title("Network In Traffic Distribution", fontsize=14)
         axes[1, 0].set_ylabel("Traffic (Bps)", fontsize=12)
         axes[1, 0].set_xticklabels(["Network In"])
         axes[1, 0].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
-        
+
         # --- Plot 4: Network Out (Apply Byte Formatter) ---
         axes[1, 1].boxplot(network_out_data)
         axes[1, 1].set_title("Network Out Traffic Distribution", fontsize=14)
@@ -633,6 +633,6 @@ class PlotResult:
         axes[1, 1].set_xticklabels(["Network Out"])
         axes[1, 1].yaxis.set_major_formatter(byte_formatter)  # Applied formatter
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+        plt.tight_layout(rect=(0, 0.03, 1, 0.95))
         plt.savefig(output_file)
         logging.info(f"Plot successfully saved to {output_file}")

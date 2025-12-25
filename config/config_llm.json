@@ -1,0 +1,66 @@
+{
+    "test_cases": [
+        {
+            "test_case": "llm",
+            "repetition": 1,
+            "replicas": [
+                1
+            ],
+            "ksvc_name": "measure-llm",
+            "arch": "x86",
+            "image": "docker.io/lazyken/measure_llm:v1@sha256:e6374e14427d9b9d10e1ecff88cce21003578e8f3f00e5dee4c1da46f9e27078",
+            "rtmp_stream_url": "192.168.253.128:2000",
+            "port": 8000,
+            "namespace": "serverless",
+            "hostname": "cloud-node",
+            "host_ip": "192.168.253.129",
+            "cool_down_time": 30,
+            "curl_time": 3,
+            "detection_time": 60,
+            "resource_requests": [
+                {
+                    "cpu": 0,
+                    "memory": 0
+                },
+                {
+                    "cpu": "300m",
+                    "memory": "3Gi"
+                }
+            ]
+        }
+    ],
+    "prometheus": {
+        "server_ip": "prometheus-grafana-stack-k-prometheus.monitoring.svc.cluster.local",
+        "port": 9090,
+        "interface": "ens33"
+    },
+    "cluster_info": {
+        "master-node": {
+            "hostname": "master-node",
+            "host_ip": "192.168.253.128",
+            "interface": "ens33"
+        },
+        "worker-nodes": [
+            {
+                "hostname": "cloud-node",
+                "host_ip": "192.168.253.129",
+                "interface": "ens33"
+            },
+            {
+                "hostname": "edge-node",
+                "host_ip": "192.168.253.130",
+                "interface": "ens33"
+            }
+        ]
+    },
+    "streaming_info": {
+        "source_ip": "192.168.253.129:2000",
+        "stream_uri": "live/stream",
+        "resolution": "1280:720"
+    },
+    "database_info": {
+        "db_host": "192.168.253.129",
+        "db_user": "thai",
+        "db_password": "pass"
+    }
+}

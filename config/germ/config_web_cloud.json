@@ -103,7 +103,7 @@
     },
     "database_info": {
         "db_host": "172.16.42.14",
-        "db_user": "thai",
-        "db_password": "1"
+        "db_user": "thai1234",
+        "db_password": "Thai_1234"
     }
 }

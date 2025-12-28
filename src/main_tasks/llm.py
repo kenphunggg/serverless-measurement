@@ -650,32 +650,33 @@ class PlotResult:
 
     @staticmethod
     def get_text2image_warm(result_file, output_file):
-        logging.info("Start plotting LLM performance metrics (Warm Status)")
+        logging.info("Start plotting Text-to-Image performance metrics (Warm Status)")
 
-        resp_time = []  # Column 5 (ms)
-        proc_time_ms = []  # Column 4 (converted from sec to ms)
-        tokens_per_sec = []  # Column 3 (unit: tokens/sec)
+        resp_time = []  # Column index 2 (ms)
+        proc_time_ms = []  # Column index 1 (converted from sec to ms)
         transfer_time = []  # Calculated: Resp - Proc (ms)
+        image_sizes = []  # Column index 0 (Bytes)
 
         try:
             with open(result_file, "r", newline="") as file:
                 reader = csv.reader(file)
                 next(reader)  # Skip header
                 for row in reader:
-                    if row:
+                    if row and len(row) >= 3:
                         try:
-                            # Parsing columns based on your CSV structure
-                            r_time = float(row[5])  # response_time_ms
-                            p_time_sec = float(row[4])  # processing_time_second
-                            tps = float(row[3])  # tokens_per_second
+                            # Parsing columns based on new CSV structure:
+                            # 0: image_size_bytes, 1: processing_time_second, 2: response_time_ms
+                            img_size = float(row[0])
+                            p_time_sec = float(row[1])
+                            r_time = float(row[2])
 
-                            # Convert processing time to ms for comparison
+                            # Calculations
                             p_time_ms = p_time_sec * 1000
                             trans_time = r_time - p_time_ms
 
+                            image_sizes.append(img_size)
                             resp_time.append(r_time)
                             proc_time_ms.append(p_time_ms)
-                            tokens_per_sec.append(tps)
                             transfer_time.append(trans_time)
 
                         except (ValueError, IndexError):
@@ -690,42 +691,44 @@ class PlotResult:
 
         # --- Plotting ---
         try:
-            # We create 2 Y-axes because tokens/sec is a different scale than milliseconds
             fig, ax1 = plt.subplots(figsize=(12, 8))
 
             # Data for first axis (Time in ms)
             time_data = [resp_time, proc_time_ms, transfer_time]
-            labels = [
-                "Total Response (ms)",
-                "Inference Proc (ms)",
-                "Network Transfer (ms)",
-            ]
-
-            box1 = ax1.boxplot(
+            ax1.boxplot(
                 time_data,
                 positions=[1, 2, 3],
                 patch_artist=True,
                 boxprops=dict(facecolor="lightblue"),
+                medianprops=dict(color="black"),
             )
             ax1.set_ylabel("Time (ms)", fontsize=12, color="blue")
             ax1.tick_params(axis="y", labelcolor="blue")
 
-            # Data for second axis (Tokens per second)
+            # Data for second axis (Image Size)
             ax2 = ax1.twinx()
-            box2 = ax2.boxplot(
-                [tokens_per_sec],
+            # Note: If sizes are very large, you might want to divide by 1024 to show KB
+            ax2.boxplot(
+                [image_sizes],
                 positions=[4],
                 patch_artist=True,
-                boxprops=dict(facecolor="lightgreen"),
+                boxprops=dict(facecolor="lightsalmon"),
+                medianprops=dict(color="black"),
             )
-            ax2.set_ylabel("Throughput (Tokens/Sec)", fontsize=12, color="green")
-            ax2.tick_params(axis="y", labelcolor="green")
+            ax2.set_ylabel("Image Size (Bytes)", fontsize=12, color="red")
+            ax2.tick_params(axis="y", labelcolor="red")
 
             # Formatting
-            plt.title("LLM Warm Performance Distribution", fontsize=16)
+            plt.title("Text-to-Image Warm Performance Distribution", fontsize=16)
             ax1.set_xticks([1, 2, 3, 4])
             ax1.set_xticklabels(
-                ["Total Resp", "Proc Time", "Transfer", "Tokens/Sec"], fontsize=10
+                [
+                    "Total Resp (ms)",
+                    "Proc Time (ms)",
+                    "Transfer (ms)",
+                    "Image Size (Bytes)",
+                ],
+                fontsize=10,
             )
 
             ax1.grid(True, axis="y", linestyle="--", alpha=0.6)

@@ -17,7 +17,7 @@
             "host_ip": "172.16.42.11",
             "cool_down_time": 20,
             "curl_time": 60,
-            "detection_time": 300,
+            "detection_time": 1200,
             "resource_requests": [
                 {
                     "cpu": 0,

@@ -25,7 +25,7 @@ GERM_YOLO_CONFIG_EDGE_PATH = "config/germ/config_yolo_edge.json"
 
 
 # ---------- CONFIG FILE ----------
-CONFIG_FILE = TEST_LLM_CONFIG_PATH
+CONFIG_FILE = TEST_STREAMING_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(

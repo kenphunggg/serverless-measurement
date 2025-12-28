@@ -2,7 +2,7 @@ apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
   name: measure-web
-  namespace: default
+  namespace: serverless
 spec:
   template:
     metadata:
@@ -17,10 +17,10 @@ spec:
         - containerPort: 5000
         env:
             - name: DB_HOST
-              value: '192.168.17.162'
+              value: '172.16.42.14'
             - name: DB_USER
               value: 'thai'
             - name: DB_PASSWORD
-              value: 'PQThai29112003'
+              value: '1'
       nodeSelector:
         kubernetes.io/hostname: cloud-node

@@ -313,7 +313,7 @@ class StreamingMeasuring:
                     # 4.1. Unpack the two lists returned by the updated function
                     fps_list, bitrate_list = get_fps_bitrate(
                         stream_url=f"rtmp://{pod_ip}:1935/live/stream",
-                        sample_needed=self.curl_time * 10,
+                        detection_time=self.detection_time,
                     )
 
                     # 4.2. Log summary statistics (optional, but good for debugging)
@@ -340,8 +340,6 @@ class StreamingMeasuring:
                             # 'zip' pairs the two lists together so you can write them in the same row
                             for fps, bitrate in zip(fps_list, bitrate_list):
                                 writer.writerow([fps, bitrate])
-
-                        logging.info(f"Successfully saved data to {stream_stats_file}")
 
                     logging.info(f"Successfully saved data to {stream_stats_file}")
 

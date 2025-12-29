@@ -278,6 +278,140 @@ class LLMMeasuring:
             "End Scenario: Get 'Responsetime' of 'LLM service on text2text model' when pod in warm status"
         )
 
+    def get_model_loadingtime(self):
+        logging.info(
+            "Scenario: Get 'Model loading time' of 'LLM service' when pod in warm status"
+        )
+        for replica in self.replicas:
+            for rep in range(1, self.repetition + 1, 1):
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
+                    )
+
+                    # 1. Create result file
+                    result_file = CreateResultFile.llm_loadingtime(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
+                    )
+
+                    # 2. Deploy ksvc for measuring
+                    window_time = 20
+                    K8sAPI.deploy_ksvc_llm(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=window_time,
+                        min_scale=0,
+                        max_scale=replica,
+                        cpu=resource['cpu'],
+                        memory=resource['memory']
+                    )
+
+                    # 3. Wait for pods to be ready
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+                    time.sleep(self.cool_down_time)
+
+                    # 4. Execute ffmpeg command to receive video from source and get time to first frame
+                    for i in range(self.curl_time):
+                        logging.info(
+                            f"Start measure response time of llm service - text2text model when pod in warm status [{i}/{self.curl_time}]"
+                        )
+
+                        while True:
+                            if (
+                                K8sAPI.get_pod_status_by_ksvc(
+                                    namespace=self.namespace, ksvc_name=self.ksvc_name
+                                )
+                                == []
+                            ):
+                                logging.info("Scaled to zero!")
+                                break
+                            logging.info("Waiting for pods to scale to zero ...")
+                            time.sleep(2)
+                        time.sleep(self.cool_down_time)
+
+                        start_time = time.time()
+                        while True:
+                            try:
+                                response = query_url(
+                                    url=f"http://{self.ksvc_name}.{self.namespace}/loading-stats"
+                                )
+                                if response["status"] == "ready":
+                                    break
+                            except Exception as e:
+                                logging.error(f"Polling error: {e}")
+
+                            time.sleep(0.2)
+
+                        response_time = time.time() - start_time
+                        response_time_ms = response_time * 1000
+
+                        if response is None:
+                            logging.error(
+                                "Received no response (None) from the detection service. Check the service/network."
+                            )
+                            continue
+                        else:
+                            with open(result_file, mode="a", newline="") as f:
+                                result_value = [
+                                    response["loading_times_seconds"]["text2image"],
+                                    response["loading_times_seconds"]["text2text"],
+                                    response_time_ms,
+                                ]
+                                writer = csv.writer(f)
+                                writer.writerow(result_value)
+                                logging.info(
+                                    f"Successfully write {result_value} into {result_file}"
+                                )
+
+                        time.sleep(self.cool_down_time)
+
+                    PlotResult.get_loadingtime(
+                        result_file=result_file,
+                        output_file=f"result/4_3_loadingtime/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
+                    )
+
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(
+                        2  # Wait for API server to successfully receive delete signal
+                    )
+
+                    while True:
+                        pods = K8sAPI.get_pod_status_by_ksvc(
+                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        )
+                        logging.info(
+                            f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                        )
+                        time.sleep(2)
+                        if not pods:
+                            logging.info(
+                                f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                            )
+                            break
+
+                    time.sleep(self.cool_down_time)
+
+                    logging.info(
+                        f"End measure response time of llm service when pod in warm status [{i}/{self.curl_time}]"
+                    )
+
+        logging.info(
+            "End Scenario: Get 'Responsetime' of 'LLM service on text2text model' when pod in warm status"
+        )
+
     def get_yolo_detection_cold(self):
         logging.info(
             "Scenario: Get 'Yolo Detection attributes' of 'YoloService' when pod in cold status"
@@ -733,6 +867,80 @@ class PlotResult:
 
             ax1.grid(True, axis="y", linestyle="--", alpha=0.6)
 
+            plt.savefig(output_file, dpi=300, bbox_inches="tight")
+            logging.info(f"Plot saved to {output_file}")
+
+        except Exception as e:
+            logging.error(f"Plotting error: {e}")
+        finally:
+            plt.close()
+
+    @staticmethod
+    def get_loadingtime(result_file, output_file):
+        logging.info("Start plotting Performance metrics (Warm Status)")
+
+        t2i_ms = []
+        t2t_ms = []
+        resp_ms = []
+
+        try:
+            with open(result_file, "r", newline="") as file:
+                # Use DictReader to safely find columns by name
+                reader = csv.DictReader(file)
+
+                for row in reader:
+                    try:
+                        # 1. Get values safely (default to 0 if missing)
+                        # 2. Convert seconds to milliseconds (* 1000)
+                        t2i_sec = float(row.get("text2image_seconds", 0) or 0)
+                        t2t_sec = float(row.get("text2text_seconds", 0) or 0)
+                        resp_val = float(row.get("response_time_ms", 0) or 0)
+
+                        t2i_ms.append(t2i_sec * 1000)
+                        t2t_ms.append(t2t_sec * 1000)
+                        resp_ms.append(resp_val)
+
+                    except (ValueError, TypeError):
+                        continue  # Skip rows with bad data
+
+        except Exception as e:
+            logging.error(f"File error: {e}")
+            return
+
+        if not resp_ms:
+            logging.error("No valid data found.")
+            return
+
+        # --- Plotting ---
+        try:
+            fig, ax = plt.subplots(figsize=(12, 8))
+
+            # Prepare data and labels
+            data_to_plot = [t2i_ms, t2t_ms, resp_ms]
+            labels = [
+                "Text2Image (ms)",
+                "Text2Text (ms)",
+                "Total Response (ms)"
+            ]
+
+            # Create Boxplot
+            box = ax.boxplot(
+                data_to_plot,
+                patch_artist=True,
+                labels=labels
+            )
+
+            # Style: Color the boxes
+            colors = ['lightblue', 'lightgreen', 'salmon']
+            for patch, color in zip(box['boxes'], colors):
+                patch.set_facecolor(color)
+
+            # Formatting
+            ax.set_ylabel("Time (milliseconds)", fontsize=12)
+            ax.set_title("Performance Distribution: T2I vs T2T vs Total", fontsize=16)
+            ax.grid(True, axis="y", linestyle="--", alpha=0.6)
+
+            # Save
             plt.savefig(output_file, dpi=300, bbox_inches="tight")
             logging.info(f"Plot saved to {output_file}")
 

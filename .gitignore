@@ -46,6 +46,9 @@ result/4_1_text2text/*
 result/4_2_text2image/*
 !result/4_2_text2image/.gitkeep
 
+result/4_3_loadingtime/*
+!result/4_3_loadingtime/.gitkeep
+
 # Ignore python repos
 __pycache__/
 

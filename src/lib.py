@@ -233,6 +233,16 @@ class CreateResultFile:
             header="image_size_bytes,processing_time_second,response_time_ms\n",
         )
 
+    @staticmethod
+    def llm_loadingtime(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="4_3_loadingtime",
+            nodename=nodename,
+            filename=filename,
+            header="text2image_seconds,text2text_seconds,response_time_ms\n",
+        )
+
+
 
 def get_curl_metrics(url: str) -> dict | None:
     """

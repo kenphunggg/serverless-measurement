@@ -25,7 +25,7 @@ GERM_YOLO_CONFIG_EDGE_PATH = "config/germ/config_yolo_edge.json"
 
 
 # ---------- CONFIG FILE ----------
-CONFIG_FILE = TEST_STREAMING_CONFIG_PATH
+CONFIG_FILE = TEST_LLM_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -77,7 +77,8 @@ if __name__ == "__main__":
         elif test_case["test_case"] == "llm":
             llm_measuring = LLMMeasuring(config=test_case, cluster_info=my_cluster)
             # llm_measuring.get_text2text_warm()
-            llm_measuring.get_text2image_warm()
+            # llm_measuring.get_text2image_warm()
+            llm_measuring.get_model_loadingtime()
             del llm_measuring
 
     end_time = datetime.datetime.now()

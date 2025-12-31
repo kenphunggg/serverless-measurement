@@ -23,6 +23,9 @@ GERM_STREAMING_CONFIG_EDGE_PATH = "config/germ/config_streaming_edge.json"
 GERM_YOLO_CONFIG_CLOUD_PATH = "config/germ/config_yolo_cloud.json"
 GERM_YOLO_CONFIG_EDGE_PATH = "config/germ/config_yolo_edge.json"
 
+GERM_LLM_CONFIG_CLOUD_PATH = "config/germ/config_llm_cloud.json"
+GERM_LLM_CONFIG_EDGE_PATH = "config/germ/config_llm_edge.json"
+
 
 # ---------- CONFIG FILE ----------
 CONFIG_FILE = TEST_LLM_CONFIG_PATH

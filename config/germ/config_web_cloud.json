@@ -8,7 +8,7 @@
             ],
             "ksvc_name": "measure-web",
             "arch": "x86",
-            "image": "docker.io/lazyken/measure-app:v2@sha256:b391d7ef71ec0812c05fd2d06973103ee95b30c842c4ce4d375f55b36ca19a4a",
+            "image": "docker.io/lazyken/measure-app:v1@sha256:9043ad03eb530139675eb3351a4151c1da45811c2947e093ff7af825643c7c40",
             "port": 5000,
             "namespace": "serverless",
             "hostname": "cloud",

@@ -28,7 +28,7 @@ GERM_LLM_CONFIG_EDGE_PATH = "config/germ/config_llm_edge.json"
 
 
 # ---------- CONFIG FILE ----------
-CONFIG_FILE = TEST_LLM_CONFIG_PATH
+CONFIG_FILE = TEST_WEB_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -55,8 +55,9 @@ if __name__ == "__main__":
             web_measuring = WebMeasuring(config=test_case, cluster_info=my_cluster)
             # web_measuring.baseline()
             # web_measuring.get_warm_resptime()
-            web_measuring.get_warm_hardware_usage()
+            # web_measuring.get_warm_hardware_usage()
             # web_measuring.get_cold_resptime()
+            web_measuring.get_cold_analysis()
             del web_measuring
 
         elif test_case["test_case"] == "streaming":

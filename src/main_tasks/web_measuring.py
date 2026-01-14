@@ -1,6 +1,9 @@
 import csv
 import logging
 import time
+import threading
+import datetime
+import json
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
@@ -14,6 +17,7 @@ from src.lib import (
     CreateResultFile,
     get_curl_metrics,
     query_url,
+    get_curl_response,
 )
 from src.prometheus import Prometheus
 
@@ -410,6 +414,172 @@ class WebMeasuring:
             "End scenario: Response time of web service when pod in cold status"
         )
 
+    def get_cold_analysis(self):
+        logging.info("Scenario: Cold analysis of web service when pod in cold status")
+
+        for replica in self.replicas:
+            for rep in range(1, self.repetition + 1, 1):
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
+                    )
+
+                    # 1. Create result file
+                    result_file = CreateResultFile.web_curl_analysis(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
+                    )
+
+                    # 2. Deploy ksvc for measuring
+                    K8sAPI.deploy_ksvc_web(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.cluster_info.master_node.hostname,
+                        window_time=self.cool_down_time,
+                        min_scale=0,
+                        max_scale=replica,
+                        database_info=self.cluster_info.database_info,
+                        cpu=resource["cpu"],
+                        memory=resource["memory"],
+                    )
+
+                    # 3. Every 2 seconds, check if all pods in given *namespace* and *ksvc* is Running
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+
+                    time.sleep(self.cool_down_time + 10)
+
+                    # Manual shut down user-container
+                    # When using autoscaling to scale down the pod, it take too long to completely shutdown the pod
+
+                    # Wait for all pods scale to zero
+                    while True:
+                        if (
+                            K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                            == []
+                        ):
+                            logging.info("Scaled to zero!")
+                            break
+                        logging.info("Waiting for pods to scale to zero ...")
+                        time.sleep(2)
+
+                    logging.info(
+                        "Start collecting response time when pod in cold status"
+                    )
+
+                    time.sleep(self.cool_down_time)
+
+                    # 4. Executing curl to get response time for every 2s and save to data
+                    for current in range(self.curl_time):
+                        # Query random data and get response time
+                        url = f"http://{self.ksvc_name}.{self.namespace}/uptime"
+
+                        thread_result = [None]
+
+                        def to_human_time(ts):
+                            if ts is None:
+                                return "N/A"
+                            # Converts to 'YYYY-MM-DD HH:MM:SS.mmmmmm'
+                            return datetime.datetime.fromtimestamp(ts).strftime(
+                                "%Y-%m-%d %H:%M:%S.%f"
+                            )
+
+                        def monitor_wrapper():
+                            # This runs inside the background thread
+                            timestamp = get_pod_start_time(
+                                self.namespace, self.ksvc_name
+                            )
+                            thread_result[0] = timestamp
+
+                        monitor_thread = threading.Thread(target=monitor_wrapper)
+                        monitor_thread.start()
+
+                        starttime = time.time()
+
+                        logging.info("Main: Sending curl request to wake up pod...")
+                        result = get_curl_response(url=url) or {}
+                        if isinstance(result, str):
+                            try:
+                                result_json = json.loads(result)
+                            except json.JSONDecodeError:
+                                logging.error(f"Could not parse JSON string: {result}")
+                                result_json = {}  # Empty dict to prevent crash
+                        # Wait for background process to finish and return pod_starttime
+                        endtime = time.time()
+                        monitor_thread.join()
+                        pod_up_time = thread_result[0]
+
+                        # Logging
+                        logging.info(f"Start time:{to_human_time(starttime)}")
+                        logging.info(f"Pod up time:{to_human_time(pod_up_time)}")
+                        logging.info(
+                            f"app start time: {to_human_time(result_json.get("app_start_timestamp"))}"
+                        )
+                        logging.info(
+                            f"processing done: {to_human_time(result_json.get("processing_done_timestamp"))}"
+                        )
+                        logging.info(f"End time:{to_human_time(endtime)}")
+                        # Logging
+
+                        logging.info(f"result: {result}")
+                        pod_up_duration = (pod_up_time - starttime) * 1000
+                        app_up_duration = (
+                            result_json.get("processing_done_timestamp") - pod_up_time
+                        ) * 1000
+                        with open(result_file, mode="a", newline="") as f:
+                            result_value = [
+                                pod_up_duration,
+                                app_up_duration,
+                            ]
+                            writer = csv.writer(f)
+                            writer.writerow(result_value)
+                        logging.debug(
+                            f"Successfully write {result_value} into {result_file} | {current}/{self.curl_time}"
+                        )
+
+                        # Wait for all pods scale to zero
+                        while True:
+                            if (
+                                K8sAPI.get_pod_status_by_ksvc(
+                                    namespace=self.namespace, ksvc_name=self.ksvc_name
+                                )
+                                == []
+                            ):
+                                logging.info("Scaled to zero!")
+                                break
+                            logging.info("Waiting for pods to scale to zero ...")
+                            time.sleep(2)
+
+                        time.sleep(self.cool_down_time)
+
+                    logging.info("End collecting response time when pod in warm status")
+
+                    # 5. Plot result
+                    PlotResult.plot_cold_anal(
+                        result_file=result_file,
+                        output_file=f"result/1_4_curl_analysis/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
+                    )
+
+                    # 6. Delete ksvc
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(self.cool_down_time)
+
+        logging.info(
+            "End scenario: Response time of web service when pod in cold status"
+        )
+
 
 class PlotResult:
     @staticmethod
@@ -636,3 +806,90 @@ class PlotResult:
         plt.tight_layout(rect=(0, 0.03, 1, 0.95))
         plt.savefig(output_file)
         logging.info(f"Plot successfully saved to {output_file}")
+
+    @staticmethod
+    def plot_cold_anal(result_file, output_file):
+        logging.info("Start plot cold start analysis of web service")
+
+        # 1. Initialize lists for the two datasets
+        col_0_data = []  # e.g., Pod Start Time/Latency
+        col_1_data = []  # e.g., App Start Time/Latency
+
+        try:
+            with open(result_file, "r", newline="") as file:
+                reader = csv.reader(file)
+
+                # Check if your CSV has a header. If so, skip it:
+                next(reader, None)
+
+                for row in reader:
+                    if row and len(row) >= 2:  # Ensure row has at least 2 columns
+                        try:
+                            # 2. Extract data from Column 0 and Column 1
+                            # Multiplying by 1000 to convert Seconds -> Milliseconds
+                            val_0 = float(row[0]) * 1000
+                            val_1 = float(row[1]) * 1000
+
+                            col_0_data.append(val_0)
+                            col_1_data.append(val_1)
+                        except (ValueError, IndexError):
+                            logging.warning(
+                                f"Warning: Skipping invalid row or value: {row}"
+                            )
+
+        except FileNotFoundError:
+            logging.error(f"Error: The file '{result_file}' was not found.")
+            return
+        except Exception as e:
+            logging.error(f"An error occurred: {e}")
+            return
+
+        if not col_0_data or not col_1_data:
+            logging.error("No valid data was found to plot.")
+            return
+
+        # --- Create and customize the box plot ---
+        fig = plt.figure(figsize=(10, 7))
+        ax = fig.add_subplot(111)
+
+        # 3. Plot both lists together
+        data_to_plot = [col_0_data, col_1_data]
+
+        # Labels for the X-axis
+        ax.boxplot(data_to_plot, labels=["Pod Start", "App Start"])
+
+        plt.title("Cold Start Analysis (ms)", fontsize=16)
+        plt.ylabel("Time (ms)", fontsize=12)
+
+        # Add grid for easier reading of ms values
+        plt.grid(True, axis="y", linestyle="--", alpha=0.7)
+
+        # --- Save the plot ---
+        try:
+            plt.savefig(output_file, dpi=300, bbox_inches="tight")
+            logging.info(f"Plot saved successfully to {output_file}")
+        except Exception as e:
+            logging.error(f"Error saving plot: {e}")
+        finally:
+            plt.close()
+
+
+def get_pod_start_time(namespace, ksvc_name):
+    logging.info("Monitor: Waiting for pod to appear...")
+
+    while True:
+        # 1. Get the list of pod dictionaries
+        # Example: [{'name': '...', 'status': 'Running'}]
+        pod_list = K8sAPI.get_pod_status_by_ksvc(
+            namespace=namespace, ksvc_name=ksvc_name
+        )
+
+        logging.info(pod_list)  # Debug print
+
+        # 2. Extract just the status strings into a simple list
+        # This converts [{'status': 'Running'}] -> ['Running']
+        current_statuses = [pod["status"] for pod in pod_list]
+
+        # 3. Now check if "Running" is in that list of strings
+        if "Running" in current_statuses:
+            return time.time()

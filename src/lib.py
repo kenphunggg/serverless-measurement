@@ -11,6 +11,7 @@ import urllib.request
 from typing import Dict, List, Optional, Tuple, Any
 import select
 import tempfile
+import json
 
 import requests
 
@@ -144,6 +145,15 @@ class CreateResultFile:
         )
 
     @staticmethod
+    def web_curl_analysis(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="1_4_curl_analysis",
+            nodename=nodename,
+            filename=filename,
+            header="pod_up_duration_ms,app_up_duration_ms\n",
+        )
+
+    @staticmethod
     def streaming_baseline(nodename: str, filename: str):
         return CreateResultFile.create(
             test_case="2_0_baseline",
@@ -243,7 +253,6 @@ class CreateResultFile:
         )
 
 
-
 def get_curl_metrics(url: str) -> dict | None:
     """
     Executes a curl command and returns the timing metrics as a dictionary.
@@ -291,6 +300,7 @@ def get_curl_metrics(url: str) -> dict | None:
             metrics_dict[key.strip()] = float(value)
 
         logging.info("Collecting metrics successfully!")
+        logging.info(metrics_dict)
         return metrics_dict
 
     except FileNotFoundError:
@@ -457,6 +467,78 @@ def query_url_post_image(url: str, image_path: str) -> dict | None:
             # Catch any other request-related errors
             logging.error(f"An unexpected error occurred: {e}. Retrying...")
             time.sleep(2)
+
+
+def old_get_curl_response(url: str) -> Optional[Any]:
+    """
+    Executes a normal curl command with NO timeout and returns the response body.
+
+    Args:
+        url: The URL to test.
+
+    Returns:
+        The response data (dict if JSON, str if text), or None on failure.
+    """
+
+    command = [
+        "curl",
+        "-s",  # Silent mode
+        url,
+    ]
+
+    try:
+        # Run curl. Without 'timeout=' arg, subprocess waits forever.
+        # Without '--max-time' flag, curl waits forever.
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        response_body = result.stdout.strip()
+        logging.info(f"query {url} and return {response_body}")
+        return response_body
+
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Error executing curl for {url}: {e.stderr}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
+        return None
+
+def get_curl_response(url: str, timeout: int = 60) -> Optional[Any]:
+    """
+    Executes a GET request using the requests library.
+
+    Args:
+        url: The URL to test.
+        timeout: Request timeout in seconds (default: 60).
+
+    Returns:
+        The response body (str), or None on failure.
+    """
+    try:
+        # requests.get handles DNS and connection establishment
+        response = requests.get(url, timeout=timeout)
+
+        # Raise an exception for HTTP error codes (4xx, 5xx)
+        response.raise_for_status()
+
+        response_body = response.text.strip()
+        logging.info(f"Query {url} returned: {response_body}")
+        return response_body
+
+    except requests.exceptions.Timeout:
+        logging.error(f"Request timed out after {timeout}s for {url}")
+        return None
+
+    except requests.exceptions.ConnectionError as e:
+        # This catches DNS failures (NameResolutionError) and refused connections
+        logging.error(f"Connection/DNS error for {url}: {e}")
+        return None
+
+    except requests.exceptions.HTTPError as e:
+        logging.error(f"HTTP error for {url}: {e}")
+        return None
+
+    except Exception as e:
+        logging.error(f"Unexpected error querying {url}: {e}")
+        return None
 
 
 class KnativePinger:

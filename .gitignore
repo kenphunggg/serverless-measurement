@@ -16,6 +16,9 @@ result/1_2_resource_web/*
 result/1_3_curl_cold/*
 !result/1_3_curl_cold/.gitkeep
 
+result/1_4_curl_analysis/*
+!result/1_4_curl_analysis/.gitkeep
+
 result/2_0_baseline/*
 !result/2_0_baseline/.gitkeep
 

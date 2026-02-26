@@ -225,6 +225,83 @@ class K8sAPI:
                 logging.error(f"API Error for '{ksvc_name}': {e}")
 
     @staticmethod
+    def deploy_startup_cpu_boost(
+        boost_name: str,
+        namespace: str,
+        target_ksvc: str,
+        cpu_request: str = "100m",
+        cpu_limit: str = "1"
+    ):
+        """
+        Deploys a StartupCPUBoost custom resource to accelerate Knative service startup.
+        """
+
+        # Define the StartupCPUBoost YAML structure
+        boost_manifest = {
+            "apiVersion": "autoscaling.x-k8s.io/v1alpha1",
+            "kind": "StartupCPUBoost",
+            "metadata": {
+                "name": boost_name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "selector": {
+                    "matchExpressions": [
+                        {
+                            "key": "serving.knative.dev/service",
+                            "operator": "In",
+                            "values": [target_ksvc]
+                        }
+                    ]
+                },
+                "resourcePolicy": {
+                    "containerPolicies": [
+                        {
+                            "containerName": "user-container", # Default for Knative
+                            "fixedResources": {
+                                "requests": {"cpu": cpu_request},
+                                "limits": {"cpu": cpu_limit}
+                            }
+                        }
+                    ]
+                },
+                "durationPolicy": {
+                    "podCondition": {
+                        "type": "Ready",
+                        "status": "True"
+                    }
+                }
+            }
+        }
+
+        # API configuration
+        config.load_kube_config()
+        api = client.CustomObjectsApi()
+        
+        group = "autoscaling.x-k8s.io"
+        version = "v1alpha1"
+        plural = "startupcpuboosts"
+
+        try:
+            # Check if it exists
+            api.get_namespaced_custom_object(
+                group, version, namespace, plural, boost_name
+            )
+            logging.info(f"StartupCPUBoost '{boost_name}' exists. Patching...")
+            api.patch_namespaced_custom_object(
+                group, version, namespace, plural, boost_name, boost_manifest
+            )
+        except ApiException as e:
+            if e.status == 404:
+                logging.info(f"StartupCPUBoost '{boost_name}' not found. Creating...")
+                api.create_namespaced_custom_object(
+                    group, version, namespace, plural, boost_manifest
+                )
+            else:
+                logging.error(f"Error deploying StartupCPUBoost: {e}")
+                raise
+
+    @staticmethod
     def deploy_ksvc_yolo(
         ksvc_name: str,
         namespace: str,
@@ -325,6 +402,134 @@ class K8sAPI:
                 logging.info(f"Knative Service '{ksvc_name}' created successfully.")
             else:
                 logging.error(f"API Error for '{ksvc_name}': {e}")
+                
+    @staticmethod
+    def deploy_startup_cpu_boost_yolo(
+        ksvc: str,
+        namespace: str,
+        check_url: str,
+        response: str,
+        cpu_request: str = "100m",
+        cpu_limit: str = "1"
+    ):
+        """
+        Deploys a StartupCPUBoost custom resource. 
+        Automatically names the resource '{ksvc}-boost'.
+        """
+        
+        # Automate the boost name generation
+        boost_name = f"{ksvc}-boost"
+
+        # Define the StartupCPUBoost YAML structure
+        boost_manifest = {
+            "apiVersion": "autoscaling.x-k8s.io/v1alpha1",
+            "kind": "StartupCPUBoost",
+            "metadata": {
+                "name": boost_name,
+                "namespace": namespace,
+            },
+            "spec": {
+                "selector": {
+                    "matchExpressions": [
+                        {
+                            "key": "serving.knative.dev/service",
+                            "operator": "In",
+                            "values": [ksvc]
+                        }
+                    ]
+                },
+                "resourcePolicy": {
+                    "containerPolicies": [
+                        {
+                            "containerName": "user-container", # Default for Knative
+                            "fixedResources": {
+                                "requests": cpu_request,
+                                "limits": cpu_limit
+                            }
+                        }
+                    ]
+                },
+                "durationPolicy": {
+                    "apiCondition": {
+                        "url": check_url,
+                        "response": response
+                    }
+                }
+            }
+        }
+
+        # API configuration
+        # config.load_kube_config() # Ensure config is loaded
+        try:
+            # Try loading as a Pod inside the cluster
+            config.load_incluster_config()
+        except config.ConfigException:
+            # Fallback to local ~/.kube/config
+            config.load_kube_config()
+            
+        api = client.CustomObjectsApi()
+        
+        group = "autoscaling.x-k8s.io"
+        version = "v1alpha1"
+        plural = "startupcpuboosts"
+
+        try:
+            # Check if it exists
+            api.get_namespaced_custom_object(
+                group, version, namespace, plural, boost_name
+            )
+            logging.info(f"StartupCPUBoost '{boost_name}' exists. Patching...")
+            api.patch_namespaced_custom_object(
+                group, version, namespace, plural, boost_name, boost_manifest
+            )
+        except ApiException as e:
+            if e.status == 404:
+                logging.info(f"StartupCPUBoost '{boost_name}' not found. Creating...")
+                api.create_namespaced_custom_object(
+                    group, version, namespace, plural, boost_manifest
+                )
+            else:
+                logging.error(f"Error deploying StartupCPUBoost: {e}")
+                raise
+
+    @staticmethod
+    def delete_startup_cpu_boost(
+        ksvc: str,
+        namespace: str
+    ):
+        """
+        Deletes the StartupCPUBoost custom resource associated with the target KSVC.
+        Automatically looks for '{ksvc}-boost'.
+        """
+        # Automate the boost name generation
+        boost_name = f"{ksvc}-boost"
+        
+        # Load config if not already loaded globally
+        # config.load_kube_config() 
+        
+        api = client.CustomObjectsApi()
+        
+        group = "autoscaling.x-k8s.io"
+        version = "v1alpha1"
+        plural = "startupcpuboosts"
+
+        try:
+            api.delete_namespaced_custom_object(
+                group=group,
+                version=version,
+                namespace=namespace,
+                plural=plural,
+                name=boost_name,
+                body=client.V1DeleteOptions()
+            )
+            logging.info(f"StartupCPUBoost '{boost_name}' deleted successfully.")
+            
+        except ApiException as e:
+            if e.status == 404:
+                logging.info(f"StartupCPUBoost '{boost_name}' not found. It may have already been deleted.")
+            else:
+                logging.error(f"Error deleting StartupCPUBoost: {e}")
+                raise
 
     @staticmethod
     def deploy_ksvc_llm(

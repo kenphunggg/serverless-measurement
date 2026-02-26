@@ -1,0 +1,23 @@
+apiVersion: autoscaling.x-k8s.io/v1alpha1
+kind: StartupCPUBoost
+metadata:
+  name: boost-001
+  namespace: serverless
+selector:
+  matchExpressions:
+  - key: serving.knative.dev/service
+    operator: In
+    values: ["measure-web"]
+spec:
+  resourcePolicy:
+    containerPolicies:
+    - containerName: user-container
+      fixedResources:
+        requests: "100m"
+        limits: "1"
+  durationPolicy:
+    podCondition:
+      type: Ready
+      status: "True"
+
+      

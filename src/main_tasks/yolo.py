@@ -238,7 +238,7 @@ class YoloMeasuring:
                         start_time = time.time()
 
                         response = query_url_post_image(
-                            url=f"http://{self.ksvc_name}.{self.namespace}/detect",
+                            url=f"http://{self.ksvc_name}.{self.namespace}.svc.cluster.local/detect",
                             image_path="config/img/4k.jpg",
                         )
 
@@ -288,6 +288,161 @@ class YoloMeasuring:
                     time.sleep(
                         2  # Wait for API server to successfully receive delete signal
                     )
+
+                    while True:
+                        pods = K8sAPI.get_pod_status_by_ksvc(
+                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        )
+                        logging.info(
+                            f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                        )
+                        time.sleep(2)
+                        if not pods:
+                            logging.info(
+                                f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                            )
+                            break
+
+                    time.sleep(self.cool_down_time)
+
+                    logging.info(
+                        f"End measure response time of yolo service when pod in cold status [{i}/{self.curl_time}]"
+                    )
+
+        logging.info(
+            "End Scenario: Get 'Yolo Detection attributes' of 'YoloService' when pod in cold status"
+        )
+        
+    def get_yolo_detection_cold_CPUBoost(self):
+        logging.info(
+            "Scenario: Get 'Yolo Detection attributes' of 'YoloService' when pod in cold status"
+        )
+        for replica in self.replicas:
+            for rep in range(1, self.repetition + 1, 1):
+                for resource in self.resource_requests:
+                    # This new loop will keep trying the *current resource* until it succeeds
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
+                    )
+
+                    # 1. Create result file
+                    result_file = CreateResultFile.yolo_detection_cold_CPUboost(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
+                    )
+                    K8sAPI.deploy_startup_cpu_boost_yolo(
+                        ksvc=self.ksvc_name, 
+                        namespace=self.namespace, 
+                        check_url="http://{self.ksvc_name}.{self.namespace}/status", 
+                        response="", 
+                        cpu_request=2, 
+                        cpu_limit=2
+                    )
+
+                    # 2. Deploy ksvc for measuring
+                    window_time = 20
+                    K8sAPI.deploy_ksvc_yolo(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=window_time,
+                        min_scale=0,
+                        max_scale=replica,
+                        rtmp_stream_url=self.rtmp_stream_url,
+                        cpu=resource["cpu"],
+                        memory=resource["memory"],
+                    )
+
+                    # 3. Wait for pods to be ready
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+
+                    time.sleep(self.cool_down_time)
+
+                    # 4. Execute ffmpeg command to receive video from source and get time to first frame
+                    for i in range(self.curl_time):
+                        logging.info(
+                            f"Start measure response time of yolo service when pod in cold status [{i}/{self.curl_time}]"
+                        )
+
+                        while True:
+                            if (
+                                K8sAPI.get_pod_status_by_ksvc(
+                                    namespace=self.namespace, ksvc_name=self.ksvc_name
+                                )
+                                == []
+                            ):
+                                logging.info("Scaled to zero!")
+                                break
+                            logging.info("Waiting for pods to scale to zero ...")
+                            time.sleep(2)
+                        time.sleep(self.cool_down_time)
+                        
+                        start_time = time.time()
+
+                        response = query_url_post_image(
+                            url=f"http://{self.ksvc_name}.{self.namespace}.svc.cluster.local/detect",
+                            image_path="config/img/4k.jpg",
+                        )
+
+                        response_time = time.time() - start_time
+                        response_time_ms = response_time * 1000
+
+                        if response is None:
+                            logging.error(
+                                "Received no response (None) from the detection service. Check the service/network."
+                            )
+                            continue
+                        else:
+                            # json_response = json.loads(response)
+                            # logging.info(json_response)
+                            if not response["success"]:
+                                logging.warning(
+                                    "Fail when anaylyzing streaming using yolo service"
+                                )
+                                continue
+
+                            with open(result_file, mode="a", newline="") as f:
+                                result_value = [
+                                    response["model_loading_time_ms"],
+                                    response["model_inference_ms"],
+                                    response["model_nms_ms"],
+                                    response["model_preprocess_ms"],
+                                    response["model_inference_ms"]
+                                    + response["model_nms_ms"]
+                                    + response["model_preprocess_ms"],
+                                    response["total_server_time_ms"],
+                                    response_time_ms,
+                                ]
+                                writer = csv.writer(f)
+                                writer.writerow(result_value)
+                                logging.info(
+                                    f"Successfully write {result_value} into {result_file}"
+                                )
+
+                        time.sleep(self.cool_down_time)
+
+                    PlotResult.response_time_cold(
+                        result_file=result_file,
+                        output_file=f"result/3_4_yolo_cold_CPUboost/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
+                    )
+
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(
+                        2  # Wait for API server to successfully receive delete signal
+                    )
+                    
+                    K8sAPI.delete_startup_cpu_boost(ksvc=self.ksvc_name, namespace=self.namespace)
 
                     while True:
                         pods = K8sAPI.get_pod_status_by_ksvc(

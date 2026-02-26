@@ -28,7 +28,7 @@ GERM_LLM_CONFIG_EDGE_PATH = "config/germ/config_llm_edge.json"
 
 
 # ---------- CONFIG FILE ----------
-CONFIG_FILE = TEST_WEB_CONFIG_PATH
+CONFIG_FILE = TEST_YOLO_CONFIG_PATH
 
 if __name__ == "__main__":
     logging.basicConfig(
@@ -57,7 +57,8 @@ if __name__ == "__main__":
             # web_measuring.get_warm_resptime()
             # web_measuring.get_warm_hardware_usage()
             # web_measuring.get_cold_resptime()
-            web_measuring.get_cold_analysis()
+            # web_measuring.get_cold_analysis()
+            # web_measuring.get_cold_resptime_cpuBoost()
             del web_measuring
 
         elif test_case["test_case"] == "streaming":
@@ -74,8 +75,9 @@ if __name__ == "__main__":
         elif test_case["test_case"] == "yolo":
             yolo_measuring = YoloMeasuring(config=test_case, cluster_info=my_cluster)
             # yolo_measuring.get_yolo_detection_warm()
-            # yolo_measuring.get_yolo_detection_cold()
-            yolo_measuring.get_warm_hardware_usage()
+            yolo_measuring.get_yolo_detection_cold()
+            # yolo_measuring.get_warm_hardware_usage()
+            yolo_measuring.get_yolo_detection_cold_CPUBoost()
             del yolo_measuring
 
         elif test_case["test_case"] == "llm":
@@ -83,6 +85,7 @@ if __name__ == "__main__":
             # llm_measuring.get_text2text_warm()
             # llm_measuring.get_text2image_warm()
             llm_measuring.get_model_loadingtime()
+            llm_measuring.get_model_loadingtime_CPUBoost()
             del llm_measuring
 
     end_time = datetime.datetime.now()

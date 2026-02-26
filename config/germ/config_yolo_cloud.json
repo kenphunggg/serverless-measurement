@@ -8,7 +8,7 @@
             ],
             "ksvc_name": "measure-yolo-cloud",
             "arch": "x86",
-            "image": "docker.io/lazyken/measure-yolo:v1@sha256:19c6b78bc821ce089b2e65d5718116d2010d84d11e86043eb2263557a13452c7",
+            "image": "docker.io/lazyken/measure-yolo:v1@sha256:f6fb8b67b82ef2ab4170a0828eaff2a51cd05dd7b9274211b3de23fadc5f1cec",
             "rtmp_stream_url": "172.16.42.14:2000",
             "port": 8080,
             "namespace": "serverless",

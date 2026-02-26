@@ -152,6 +152,15 @@ class CreateResultFile:
             filename=filename,
             header="pod_up_duration_ms,app_up_duration_ms\n",
         )
+        
+    @staticmethod
+    def web_curl_cold_cpuBoost(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="1_5_curl_cold_cpuBoost",
+            nodename=nodename,
+            filename=filename,
+            header="time_namelookup,time_connect,time_appconnect,time_pretransfer,time_redirect,time_starttransfer,time_total\n",
+        )
 
     @staticmethod
     def streaming_baseline(nodename: str, filename: str):
@@ -211,6 +220,15 @@ class CreateResultFile:
     def yolo_detection_cold(nodename: str, filename: str):
         return CreateResultFile.create(
             test_case="3_2_yolo_cold",
+            nodename=nodename,
+            filename=filename,
+            header="model_loading_time_ms,model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",
+        )
+        
+    @staticmethod
+    def yolo_detection_cold_CPUboost(nodename: str, filename: str):
+        return CreateResultFile.create(
+            test_case="3_4_yolo_cold_CPUboost",
             nodename=nodename,
             filename=filename,
             header="model_loading_time_ms,model_inference_ms, model_nms_ms, model_preprocess_ms, model_total_process_ms, total_server_time_ms, response_time_ms\n",

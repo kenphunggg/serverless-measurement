@@ -411,6 +411,140 @@ class LLMMeasuring:
         logging.info(
             "End Scenario: Get 'Responsetime' of 'LLM service on text2text model' when pod in warm status"
         )
+        
+    def get_model_loadingtime_CPUBoost(self):
+        logging.info(
+            "Scenario: Get 'Model loading time' of 'LLM service' when pod in warm status"
+        )
+        for replica in self.replicas:
+            for rep in range(1, self.repetition + 1, 1):
+                for resource in self.resource_requests:
+                    logging.info(
+                        f"Replicas: {replica}, Repeat time: {rep}/{self.repetition}, Instance: {self.hostname}, CPU req: {resource['cpu']}, Mem req: {resource['memory']}"
+                    )
+
+                    # 1. Create result file
+                    result_file = CreateResultFile.llm_loadingtime(
+                        nodename=self.hostname,
+                        filename=f"{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.csv",
+                    )
+
+                    # 2. Deploy ksvc for measuring
+                    window_time = 20
+                    K8sAPI.deploy_ksvc_llm(
+                        ksvc_name=self.ksvc_name,
+                        namespace=self.namespace,
+                        image=self.image,
+                        port=self.port,
+                        hostname=self.hostname,
+                        window_time=window_time,
+                        min_scale=0,
+                        max_scale=replica,
+                        cpu=resource['cpu'],
+                        memory=resource['memory']
+                    )
+
+                    # 3. Wait for pods to be ready
+                    while True:
+                        if K8sAPI.all_pods_ready(
+                            pods=K8sAPI.get_pod_status_by_ksvc(
+                                namespace=self.namespace, ksvc_name=self.ksvc_name
+                            )
+                        ):
+                            logging.info("All pods ready!")
+                            break
+                        logging.info("Waiting for pods to be ready ...")
+                        time.sleep(2)
+                    time.sleep(self.cool_down_time)
+
+                    # 4. Execute ffmpeg command to receive video from source and get time to first frame
+                    for i in range(self.curl_time):
+                        logging.info(
+                            f"Start measure response time of llm service - text2text model when pod in warm status [{i}/{self.curl_time}]"
+                        )
+
+                        while True:
+                            if (
+                                K8sAPI.get_pod_status_by_ksvc(
+                                    namespace=self.namespace, ksvc_name=self.ksvc_name
+                                )
+                                == []
+                            ):
+                                logging.info("Scaled to zero!")
+                                break
+                            logging.info("Waiting for pods to scale to zero ...")
+                            time.sleep(2)
+                        time.sleep(self.cool_down_time)
+
+                        start_time = time.time()
+                        while True:
+                            try:
+                                response = query_url(
+                                    url=f"http://{self.ksvc_name}.{self.namespace}/loading-stats"
+                                )
+                                if response["status"] == "ready":
+                                    break
+                            except Exception as e:
+                                logging.error(f"Polling error: {e}")
+
+                            time.sleep(0.2)
+
+                        response_time = time.time() - start_time
+                        response_time_ms = response_time * 1000
+
+                        if response is None:
+                            logging.error(
+                                "Received no response (None) from the detection service. Check the service/network."
+                            )
+                            continue
+                        else:
+                            with open(result_file, mode="a", newline="") as f:
+                                result_value = [
+                                    response["loading_times_seconds"]["text2image"],
+                                    response["loading_times_seconds"]["text2text"],
+                                    response_time_ms,
+                                ]
+                                writer = csv.writer(f)
+                                writer.writerow(result_value)
+                                logging.info(
+                                    f"Successfully write {result_value} into {result_file}"
+                                )
+
+                        time.sleep(self.cool_down_time)
+
+                    PlotResult.get_loadingtime(
+                        result_file=result_file,
+                        output_file=f"result/4_3_loadingtime/{self.hostname}/{self.arch}_{var.generate_file_time}_{resource['cpu']}cpu_{resource['memory']}mem_rep{rep}.png",
+                    )
+
+                    K8sAPI.delete_ksvc(ksvc=self.ksvc_name, namespace=self.namespace)
+                    time.sleep(
+                        2  # Wait for API server to successfully receive delete signal
+                    )
+
+                    while True:
+                        pods = K8sAPI.get_pod_status_by_ksvc(
+                            namespace=self.namespace, ksvc_name=self.ksvc_name
+                        )
+                        logging.info(
+                            f"Waiting for all pods in ksvc {self.ksvc_name}, namespace {self.namespace} to be deleted ..."
+                        )
+                        time.sleep(2)
+                        if not pods:
+                            logging.info(
+                                f"All pods in ksvc {self.ksvc_name}, namespace {self.namespace} successfully deleted from the cluster."
+                            )
+                            break
+
+                    time.sleep(self.cool_down_time)
+
+                    logging.info(
+                        f"End measure response time of llm service when pod in warm status [{i}/{self.curl_time}]"
+                    )
+
+        logging.info(
+            "End Scenario: Get 'Responsetime' of 'LLM service on text2text model' when pod in warm status"
+        )
 
     def get_yolo_detection_cold(self):
         logging.info(
